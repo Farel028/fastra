@@ -4,17 +4,22 @@ import Typo from "@/components/Typo";
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { verticalScale } from "@/utils/styling";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 const Welcome = () => {
+  const router = useRouter();
   return (
     <ScreenWrapper>
       <View style={styles.container}>
         {/* top */}
         <View style={styles.topBar}>
-          <TouchableOpacity style={styles.loginButton}>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => router.push("./login")}
+          >
             <Typo fontWeight={"500"}>Sign in</Typo>
           </TouchableOpacity>
         </View>
@@ -31,7 +36,7 @@ const Welcome = () => {
         <View style={styles.footer}>
           <LinearGradient
             pointerEvents="none"
-            start={{ x: 0.5, y: 1 }} 
+            start={{ x: 0.5, y: 1 }}
             end={{ x: 0.5, y: 0 }}
             colors={[
               "rgba(255,255,255,0.18)",
@@ -68,7 +73,7 @@ const Welcome = () => {
             entering={FadeInDown.duration(450).delay(190)}
             style={styles.buttonContainer}
           >
-            <Button>
+            <Button onPress={() => router.push("./register")}>
               <Typo size={22} color={colors.neutral900} fontWeight={"600"}>
                 Get Started
               </Typo>
