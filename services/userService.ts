@@ -8,12 +8,18 @@ export const updateUser = async (
   updatedData: UserDataType,
 ): Promise<ResponseType> => {
   try {
-    if(updatedData.image && updatedData?.image.uri){
-        const imageUploadRes = await uploadFileToCloudinary(updatedData.image, "users");
-        if(!imageUploadRes.success){
-            return { success: false, msg: imageUploadRes.msg || "Failed to upload image" };
-        }
-        updatedData.image = imageUploadRes.data;
+    if (updatedData.image && updatedData?.image.uri) {
+      const imageUploadRes = await uploadFileToCloudinary(
+        updatedData.image,
+        "users",
+      );
+      if (!imageUploadRes.success) {
+        return {
+          success: false,
+          msg: imageUploadRes.msg || "Failed to upload image",
+        };
+      }
+      updatedData.image = imageUploadRes.data;
     }
     const userRef = doc(firestore, "users", uid);
     await updateDoc(userRef, updatedData);
