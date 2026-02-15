@@ -8,29 +8,33 @@ const StackLayout = () => {
       <Stack.Screen
         name="(modals)/profileModal"
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          presentation: "transparentModal",
+          animation: "fade",
+          contentStyle: { backgroundColor: "transparent" },
         }}
       />
       <Stack.Screen
         name="(modals)/walletModal"
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          presentation: "transparentModal",
+          animation: "fade",
+          contentStyle: { backgroundColor: "transparent" },
         }}
       />
       <Stack.Screen
         name="(modals)/transactionModal"
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          presentation: "transparentModal",
+          animation: "fade",
+          contentStyle: { backgroundColor: "transparent" },
         }}
       />
       <Stack.Screen
         name="(modals)/searchModal"
         options={{
-          presentation: "modal",
-          animation: "slide_from_bottom",
+          presentation: "transparentModal",
+          animation: "fade",
+          contentStyle: { backgroundColor: "transparent" },
         }}
       />
     </Stack>

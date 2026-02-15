@@ -34,15 +34,15 @@ const Home = () => {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={{ gap: 4 }}>
-            <Typo size={16} color={colors.neutral400}>
-              Hello,
-            </Typo>
-            <Typo size={20} fontWeight={"500"}>
-              {user?.name}
+            <Typo size={20} color={colors.neutral400}>
+              Hi,{" "}
+              <Typo size={20} fontWeight={"500"}>
+                  {user?.name}
+              </Typo>
             </Typo>
           </View>
           <TouchableOpacity
-            onPress={() => router.push("./(modals)/searchModal")}
+            onPress={() => router.push("/(modals)/searchModal")}
             style={styles.searchIcon}
           >
             <Icons.MagnifyingGlassIcon

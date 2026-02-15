@@ -43,13 +43,12 @@ const ProfileModal = () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
-      aspect: [4, 3],
+      aspect: [1, 1],
       quality: 0.5,
     });
 
-    if (!result.canceled) {
-      setUserData({ ...userData, image: result.assets[0] });
-    }
+    if (result.canceled) return;
+    setUserData((prev) => ({ ...prev, image: result.assets[0] }));
   };
 
   const onSubmit = async () => {
@@ -71,7 +70,7 @@ const ProfileModal = () => {
     }
   };
   return (
-    <ModalWrapper>
+    <ModalWrapper onClose={() => router.back()}>
       <View style={styles.container}>
         <Header
           title="Edit Profile"
@@ -79,7 +78,10 @@ const ProfileModal = () => {
           style={{ marginBottom: spacingY._10 }}
         />
 
-        <ScrollView contentContainerStyle={styles.form}>
+        <ScrollView
+          contentContainerStyle={styles.form}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.avatarContainer}>
             <Image
               style={styles.avatar}
@@ -102,7 +104,7 @@ const ProfileModal = () => {
               placeholder="Name"
               value={userData.name}
               onChangeText={(value) =>
-                setUserData({ ...userData, name: value })
+                setUserData((prev) => ({ ...prev, name: value }))
               }
             />
           </View>
@@ -146,12 +148,16 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: "relative",
     alignSelf: "center",
+    marginTop: spacingY._10,
   },
   avatar: {
     width: verticalScale(135),
+    height: verticalScale(135),
     borderRadius: 200,
     borderWidth: 1,
     borderColor: colors.neutral500,
+    overflow: "hidden",
+    backgroundColor: colors.neutral800,
   },
   editIcon: {
     position: "absolute",
@@ -164,6 +170,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     elevation: 4,
     padding: spacingY._7,
+  },
+  avatarHint: {
+    textAlign: "center",
+    marginTop: -spacingY._20,
   },
   inputContainer: {
     gap: spacingY._10,

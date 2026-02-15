@@ -9,8 +9,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   orderBy,
   query,
+  runTransaction,
+  serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
@@ -449,5 +452,167 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
     };
   } catch (err: any) {
     return { success: false, msg: err.message };
+  }
+};
+
+export const createTransferTransaction = async (args: {
+  uid: string;
+  fromWalletId: string;
+  toWalletId: string;
+  amount: number;
+  date: Date;
+  description?: string;
+}): Promise<ResponseType> => {
+  try {
+    const { uid, fromWalletId, toWalletId, amount, date, description } = args;
+
+    if (!uid) return { success: false, msg: "User tidak valid" };
+    if (!fromWalletId || !toWalletId)
+      return { success: false, msg: "Wallet transfer belum dipilih" };
+    if (fromWalletId === toWalletId)
+      return { success: false, msg: "From & To wallet tidak boleh sama" };
+    if (!amount || amount <= 0)
+      return { success: false, msg: "Amount transfer tidak valid" };
+
+    const fromRef = doc(firestore, "wallets", fromWalletId);
+    const toRef = doc(firestore, "wallets", toWalletId);
+
+    const txCol = collection(firestore, "transactions");
+    const expenseRef = doc(txCol); // auto id
+    const incomeRef = doc(txCol); // auto id
+
+    const transferId = `${expenseRef.id}_${incomeRef.id}`; // buat linking
+
+    await runTransaction(firestore, async (t) => {
+      // --- validate wallets exist + uid match (opsional tapi recommended)
+      const fromSnap = await t.get(fromRef);
+      const toSnap = await t.get(toRef);
+
+      if (!fromSnap.exists()) throw new Error("From wallet tidak ditemukan");
+      if (!toSnap.exists()) throw new Error("To wallet tidak ditemukan");
+
+      const fromWallet = fromSnap.data() as WalletType;
+      const toWallet = toSnap.data() as WalletType;
+
+      if (fromWallet.uid !== uid || toWallet.uid !== uid)
+        throw new Error("Wallet bukan milik user");
+
+      // --- cek saldo cukup (kalau kamu mau boleh dihapus)
+      const fromAmount = Number(fromWallet.amount ?? 0);
+      if (fromAmount < amount) throw new Error("Saldo from wallet tidak cukup");
+
+      // --- update balances (atomic)
+      t.update(fromRef, { amount: increment(-amount) });
+      t.update(toRef, { amount: increment(amount) });
+
+      // --- create 2 transactions (expense + income) linked by transferId
+      // note: category dikosongin biar gak ganggu rule expense
+      t.set(expenseRef, {
+        uid,
+        type: "expense",
+        amount,
+        category: "",
+        description: description ?? "",
+        date,
+        walletId: fromWalletId,
+        image: null,
+
+        // metadata transfer
+        isTransfer: true,
+        transferId,
+        transferSide: "out",
+        transferFromId: fromWalletId,
+        transferToId: toWalletId,
+
+        created: serverTimestamp(),
+      });
+
+      t.set(incomeRef, {
+        uid,
+        type: "income",
+        amount,
+        category: "",
+        description: description ?? "",
+        date,
+        walletId: toWalletId,
+        image: null,
+
+        // metadata transfer
+        isTransfer: true,
+        transferId,
+        transferSide: "in",
+        transferFromId: fromWalletId,
+        transferToId: toWalletId,
+
+        created: serverTimestamp(),
+      });
+    });
+
+    return { success: true, msg: "Transfer sukses" };
+  } catch (e: any) {
+    return { success: false, msg: e?.message || "Transfer gagal" };
+  }
+};
+
+export const deleteTransferTransactions = async (
+  transferId: string,
+): Promise<ResponseType> => {
+  try {
+    if (!transferId) return { success: false, msg: "Invalid transferId" };
+
+    const parts = transferId.split("_");
+    if (parts.length !== 2)
+      return { success: false, msg: "transferId format invalid" };
+
+    const [outId, inId] = parts;
+
+    const outRef = doc(firestore, "transactions", outId);
+    const inRef = doc(firestore, "transactions", inId);
+
+    await runTransaction(firestore, async (t) => {
+      const outSnap = await t.get(outRef);
+      const inSnap = await t.get(inRef);
+
+      const outTx = outSnap.exists() ? (outSnap.data() as any) : null;
+      const inTx = inSnap.exists() ? (inSnap.data() as any) : null;
+
+      // minimal salah satu harus ada
+      const base = outTx ?? inTx;
+      if (!base) throw new Error("Transfer pair not found");
+
+      const fromWalletId = base.transferFromId;
+      const toWalletId = base.transferToId;
+      const amount = Number(base.amount ?? 0);
+
+      if (!fromWalletId || !toWalletId) {
+        throw new Error("Transfer wallet data missing");
+      }
+      if (!amount || amount <= 0) {
+        throw new Error("Transfer amount invalid");
+      }
+
+      const fromRef = doc(firestore, "wallets", fromWalletId);
+      const toRef = doc(firestore, "wallets", toWalletId);
+
+      const fromWalletSnap = await t.get(fromRef);
+      const toWalletSnap = await t.get(toRef);
+
+      if (!fromWalletSnap.exists()) throw new Error("From wallet not found");
+      if (!toWalletSnap.exists()) throw new Error("To wallet not found");
+
+      // ✅ revert saldo (kebalikan dari transfer):
+      // awalnya: from -amount, to +amount
+      // delete:  from +amount, to -amount
+      t.update(fromRef, { amount: increment(amount) });
+      t.update(toRef, { amount: increment(-amount) });
+
+      // ✅ delete dua transaksi (yang ada aja)
+      if (outSnap.exists()) t.delete(outRef);
+      if (inSnap.exists()) t.delete(inRef);
+    });
+
+    return { success: true, msg: "Transfer deleted" };
+  } catch (e: any) {
+    return { success: false, msg: e?.message || "Failed to delete transfer" };
   }
 };

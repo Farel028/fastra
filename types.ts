@@ -95,12 +95,15 @@ export type TransactionListType = {
   title?: string;
   loading?: boolean;
   emptyListMessage?: string;
+  fitParent?: boolean;
+  disableItemAnimation?: boolean;
 };
 
 export type TransactionItemProps = {
   item: TransactionType;
   index: number;
   handleClick: Function;
+  disableAnimation?: boolean;
 };
 
 export interface InputProps extends TextInputProps {

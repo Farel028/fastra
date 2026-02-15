@@ -10,18 +10,21 @@ import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
 import {
   createOrUpdateTransaction,
+  createTransferTransaction,
   deleteTransaction,
 } from "@/services/transactionService";
 import { TransactionType, WalletType } from "@/types";
 import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  BackHandler,
   Platform,
   Pressable,
   ScrollView,
@@ -57,6 +60,16 @@ const clampOneLine = (t?: string) => (t ?? "").replace(/\s+/g, " ").trim();
 const TransactionModal = () => {
   const { user } = useAuth();
   const router = useRouter();
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        router.back(); // âœ… back android nutup modal
+        return true; // stop default
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
+
   const params = useLocalSearchParams();
 
   const oldTransaction: Partial<ParamType> = useMemo(
@@ -100,14 +113,162 @@ const TransactionModal = () => {
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [dateModalVisible, setDateModalVisible] = useState(false);
 
+  // calculator
+  const [calcModalVisible, setCalcModalVisible] = useState(false);
+  const [calcExpr, setCalcExpr] = useState<string>("");
+  const [calcResult, setCalcResult] = useState<string>("0");
+
+  const [activeOp, setActiveOp] = useState<string | null>(null);
+
+  const OPS = ["+", "-", "Ã—", "Ã·"] as const;
+  const isOp = (c?: string) =>
+    c ? (OPS as readonly string[]).includes(c) : false;
+
+  const lastChar = (s: string) => (s.length ? s[s.length - 1] : "");
+
+  const calcAppend = (t: string) => {
+    setCalcExpr((prev) => {
+      const p = prev.replace(/\s+/g, "");
+      const lc = lastChar(p);
+
+      // angka
+      const isNumber = /^[0-9]$/.test(t);
+      if (isNumber) {
+        setActiveOp(null);
+        return p === "0" ? t : p + t;
+      }
+
+      // titik
+      if (t === ".") {
+        // cari last token angka setelah operator terakhir
+        const lastOpIndex = Math.max(
+          p.lastIndexOf("+"),
+          p.lastIndexOf("-"),
+          p.lastIndexOf("Ã—"),
+          p.lastIndexOf("Ã·"),
+        );
+        const chunk = p.slice(lastOpIndex + 1);
+        if (chunk.includes(".")) return p; // prevent double dot
+
+        setActiveOp(null);
+        if (!p.length || isOp(lc)) return p + "0."; // mulai decimal jadi 0.
+        return p + ".";
+      }
+
+      // operator
+      if (isOp(t)) {
+        setActiveOp(t);
+
+        if (!p.length) {
+          // boleh negatif di awal
+          return t === "-" ? "-" : "";
+        }
+
+        // kalau terakhir operator -> replace operator terakhir
+        if (isOp(lc)) {
+          return p.slice(0, -1) + t;
+        }
+
+        // kalau terakhir titik -> jangan izinin "12." langsung operator
+        if (lc === ".") return p;
+
+        return p + t;
+      }
+
+      return p;
+    });
+  };
+
+  const calcBackspace = () => {
+    setCalcExpr((p) => {
+      const next = p.length ? p.slice(0, -1) : "";
+      const lc = lastChar(next);
+      setActiveOp(isOp(lc) ? lc : null);
+      return next;
+    });
+  };
+
+  const calcClear = () => {
+    setCalcExpr("");
+    setCalcResult("0");
+    setActiveOp(null);
+  };
+
+  // aman: cuma izinin angka + operator dasar, terus eval versi "Function"
+  const calcEvaluate = () => {
+    try {
+      const safe = (calcExpr || "0").replace(/Ã—/g, "*").replace(/Ã·/g, "/");
+
+      // validasi karakter
+      if (!/^[0-9+\-*/.()]+$/.test(safe)) {
+        setCalcResult("Error");
+        return;
+      }
+
+      // eslint-disable-next-line no-new-func
+      const out = Function(`"use strict"; return (${safe});`)();
+      if (typeof out !== "number" || !isFinite(out)) {
+        setCalcResult("Error");
+        return;
+      }
+
+      // uang: bulatkan ke integer
+      const rounded = Math.round(out);
+      setCalcResult(String(rounded));
+    } catch {
+      setCalcResult("Error");
+    }
+  };
+
+  const safeEvalToInt = (expr: string) => {
+    try {
+      let safe = (expr || "0").replace(/Ã—/g, "*").replace(/Ã·/g, "/");
+
+      // buang operator/titik di ujung biar ga error pas preview
+      while (/[+\-*/.]$/.test(safe)) safe = safe.slice(0, -1);
+      if (!safe) return "0";
+
+      if (!/^[0-9+\-*/.()]+$/.test(safe)) return "Error";
+
+      // eslint-disable-next-line no-new-func
+      const out = Function(`"use strict"; return (${safe});`)();
+      if (typeof out !== "number" || !isFinite(out)) return "Error";
+
+      return String(Math.round(out));
+    } catch {
+      return "Error";
+    }
+  };
+
+  useEffect(() => {
+    const expr = calcExpr.replace(/\s+/g, "");
+    if (!expr.length) {
+      setCalcResult("0");
+      return;
+    }
+    setCalcResult(safeEvalToInt(expr));
+  }, [calcExpr]);
+
+  const calcApplyToAmount = () => {
+    if (calcResult === "Error") return;
+    setAmountFromStr(calcResult); // ini udah update amountStr + transaction.amount
+    setCalcModalVisible(false);
+  };
+
   const { data: wallets, loading: walletLoading } = useFetchData<WalletType>(
     "wallets",
     [where("uid", "==", user?.uid), orderBy("created", "desc")],
   );
 
+  const getWalletId = (w: WalletType) =>
+    String((w as any)?.id ?? (w as any)?.docId ?? (w as any)?.walletId ?? "");
+
   const walletById = useMemo(() => {
     const map = new Map<string, WalletType>();
-    wallets.forEach((w) => map.set(w.id as any, w));
+    wallets.forEach((w) => {
+      const id = getWalletId(w);
+      if (id) map.set(id, w);
+    });
     return map;
   }, [wallets]);
 
@@ -118,12 +279,12 @@ const TransactionModal = () => {
 
   const selectedFromName = useMemo(() => {
     const w = walletById.get(transferFromId);
-    return w ? w.name : "From wallet";
+    return w ? w.name : "From";
   }, [transferFromId, walletById]);
 
   const selectedToName = useMemo(() => {
     const w = walletById.get(transferToId);
-    return w ? w.name : "To wallet";
+    return w ? w.name : "To";
   }, [transferToId, walletById]);
 
   const setAmountFromStr = (raw: string) => {
@@ -155,13 +316,16 @@ const TransactionModal = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ auto-select "wallet utama" (wallet paling baru dari query)
+  // âœ… auto-select "wallet utama" (wallet paling baru dari query)
   useEffect(() => {
     if (walletLoading) return;
     if (transaction.type === ("transfer" as any)) return;
 
     if (!transaction.walletId && wallets.length > 0) {
-      setTransaction((p) => ({ ...p, walletId: wallets[0].id as any }));
+      setTransaction((p) => ({
+        ...p,
+        walletId: wallets.slice(-1)[0].id as any,
+      }));
     }
   }, [walletLoading, wallets, transaction.type, transaction.walletId]);
 
@@ -178,7 +342,31 @@ const TransactionModal = () => {
     if (submitDisabled) return;
 
     if (transaction.type === ("transfer" as any)) {
-      Alert.alert("Transfer", "UI sudah. Logic transfer coming soon 😄");
+      if (!user?.uid) return;
+
+      if (!transferFromId || !transferToId) {
+        Alert.alert("Transfer", "Pilih wallet asal & tujuan dulu");
+        return;
+      }
+      if (transferFromId === transferToId) {
+        Alert.alert("Transfer", "Wallet asal & tujuan tidak boleh sama");
+        return;
+      }
+
+      setLoading(true);
+      const res = await createTransferTransaction({
+        uid: user.uid,
+        fromWalletId: transferFromId,
+        toWalletId: transferToId,
+        amount: Number(amountStr),
+        date: transaction.date as Date,
+        description: transaction.description ?? "",
+      });
+      setLoading(false);
+
+      if (res.success) router.back();
+      else Alert.alert("Transfer", res.msg);
+
       return;
     }
 
@@ -266,9 +454,14 @@ const TransactionModal = () => {
       category: value === "expense" ? p.category : "",
       walletId: value === "transfer" ? "" : p.walletId,
     }));
+
+    if (value === "transfer") {
+      setTransferFromId("");
+      setTransferToId("");
+    }
   };
 
-  // ✅ label tanggal untuk tombol date (di atas submit)
+  // âœ… label tanggal untuk tombol date (di atas submit)
   const dateLabel = useMemo(() => {
     const d = transaction.date as Date;
     const day = d.toLocaleDateString("id-ID", { weekday: "short" });
@@ -284,8 +477,15 @@ const TransactionModal = () => {
     return `${day}, ${date}\n${time}`;
   }, [transaction.date]);
 
+  const anySheetOpen =
+    walletModalVisible ||
+    noteModalVisible ||
+    receiptModalVisible ||
+    dateModalVisible ||
+    calcModalVisible;
+
   return (
-    <ModalWrapper>
+    <ModalWrapper onClose={() => router.back()} swipeEnabled={!anySheetOpen}>
       <View style={styles.container}>
         <Header
           title={oldTransaction?.id ? "Update Transaction" : "New Transaction"}
@@ -381,7 +581,6 @@ const TransactionModal = () => {
                       />
                     </View>
 
-                    {/* ✅ label normal (nggak dipaksa wrapper) */}
                     <Typo
                       size={12}
                       color={colors.neutral200}
@@ -397,7 +596,6 @@ const TransactionModal = () => {
             </ScrollView>
           )}
 
-          {/* TRANSFER UI (sementara) */}
           {transaction.type === ("transfer" as any) && (
             <View style={styles.transferBox}>
               <Typo color={colors.neutral200} size={14}>
@@ -406,7 +604,7 @@ const TransactionModal = () => {
 
               <View style={styles.transferRow}>
                 <Pressable
-                  style={styles.pickerInput}
+                  style={[styles.pickerInput, styles.transferPicker]}
                   onPress={() => openWalletModal("from")}
                 >
                   <Typo
@@ -432,7 +630,7 @@ const TransactionModal = () => {
                 </View>
 
                 <Pressable
-                  style={styles.pickerInput}
+                  style={[styles.pickerInput, styles.transferPicker]}
                   onPress={() => openWalletModal("to")}
                 >
                   <Typo
@@ -449,10 +647,6 @@ const TransactionModal = () => {
                   />
                 </Pressable>
               </View>
-
-              <Typo size={12} color={colors.neutral500}>
-                (Logic transfer belum dibuat — UI dulu)
-              </Typo>
             </View>
           )}
 
@@ -543,6 +737,11 @@ const TransactionModal = () => {
             }}
             onClear={() => setAmountFromStr("0")}
             onOpenDate={() => setDateModalVisible(true)}
+            onOpenCalc={() => {
+              setCalcExpr(amountStr === "0" ? "" : amountStr);
+              setCalcResult(amountStr);
+              setCalcModalVisible(true);
+            }}
             onSubmit={onSubmit}
             submitDisabled={submitDisabled}
             dateLabel={dateLabel}
@@ -559,10 +758,10 @@ const TransactionModal = () => {
         <ScrollView style={{ maxHeight: verticalScale(360) }}>
           {wallets.map((w) => (
             <TouchableOpacity
-              key={w.id}
+              key={getWalletId(w)}
               activeOpacity={0.85}
               style={styles.walletRow}
-              onPress={() => pickWallet(w.id as any)}
+              onPress={() => pickWallet(getWalletId(w))}
             >
               <View style={{ flex: 1 }}>
                 <Typo fontWeight={"700"} numberOfLines={1} ellipsizeMode="tail">
@@ -674,6 +873,85 @@ const TransactionModal = () => {
           </TouchableOpacity>
         )}
       </SheetModal>
+
+      {/* CALCULATOR SHEET */}
+      <SheetModal
+        visible={calcModalVisible}
+        title="Calculator"
+        onClose={() => setCalcModalVisible(false)}
+      >
+        <View style={styles.calcDisplay}>
+          <Typo size={14} color={colors.neutral400} numberOfLines={2}>
+            {calcExpr || "0"}
+          </Typo>
+          <Typo size={28} fontWeight={"900"}>
+            {calcResult}
+          </Typo>
+        </View>
+
+        <View style={styles.calcGrid}>
+          {[
+            ["7", "8", "9", "Ã·"],
+            ["4", "5", "6", "Ã—"],
+            ["1", "2", "3", "-"],
+            [".", "0", "âŒ«", "+"],
+            ["=", "Apply"],
+          ].map((row, rIdx) => (
+            <View key={rIdx} style={styles.calcRow}>
+              {row.map((k) => {
+                // âŒ« tombol khusus biar long press jalan
+                if (k === "âŒ«") {
+                  return (
+                    <TouchableOpacity
+                      key="âŒ«"
+                      activeOpacity={0.88}
+                      style={styles.calcKey}
+                      onPress={calcBackspace}
+                      onLongPress={calcClear}
+                      delayLongPress={400}
+                    >
+                      <Typo fontWeight={"900"}>âŒ«</Typo>
+                    </TouchableOpacity>
+                  );
+                }
+
+                const isWide = k === "Apply";
+                const isEq = k === "=";
+                const isOperator = ["+", "-", "Ã—", "Ã·"].includes(k);
+                const isActiveOp = activeOp === k;
+
+                return (
+                  <TouchableOpacity
+                    key={k}
+                    activeOpacity={0.88}
+                    style={[
+                      styles.calcKey,
+                      isWide && styles.calcKeyWide,
+                      isEq && styles.calcKeyPrimary,
+                      isOperator && styles.calcOperator,
+                      isActiveOp && styles.calcOperatorActive,
+                    ]}
+                    onPress={() => {
+                      if (k === "=") return calcEvaluate();
+                      if (k === "Apply") return calcApplyToAmount();
+
+                      // angka / operator termasuk 000
+                      calcAppend(k);
+                    }}
+                  >
+                    <Typo
+                      fontWeight={"900"}
+                      color={isEq ? colors.black : colors.white}
+                    >
+                      {k}
+                    </Typo>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      </SheetModal>
     </ModalWrapper>
   );
 };
@@ -685,6 +963,7 @@ const OlloNumpad = ({
   onKey,
   onBackspace,
   onClear,
+  onOpenCalc,
   onSubmit,
   onOpenDate,
   submitDisabled,
@@ -696,6 +975,7 @@ const OlloNumpad = ({
   onClear: () => void;
   onSubmit: () => void;
   onOpenDate: () => void;
+  onOpenCalc: () => void;
   submitDisabled: boolean;
   dateLabel: string; // "Sen, 15 Feb 2026\n12:33"
 }) => {
@@ -750,7 +1030,7 @@ const OlloNumpad = ({
             <TouchableOpacity
               activeOpacity={0.88}
               style={[styles.padKey, styles.padTool]}
-              onPress={() => {}}
+              onPress={onOpenCalc} // âœ… sekarang kepake
             >
               <Icons.Calculator
                 size={verticalScale(18)}
@@ -860,7 +1140,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
 
-  // ✅ label normal
+  // âœ… label normal
   catLabel: {
     width: verticalScale(76),
     textAlign: "center",
@@ -897,6 +1177,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: scale(10),
   },
+  transferPicker: {
+    flex: 1,
+    minWidth: 0,
+  },
   transferArrow: {
     width: verticalScale(34),
     height: verticalScale(34),
@@ -923,14 +1207,15 @@ const styles = StyleSheet.create({
   pickerText: {
     flex: 1,
     paddingRight: scale(6),
+    color: colors.white,
   },
-
   sticky: {
     position: "absolute",
     left: spacingY._20,
     right: spacingY._20,
     bottom: spacingY._15,
     gap: spacingY._12,
+    backgroundColor: colors.neutral900,
   },
   stickyTopRow: {
     flexDirection: "row",
@@ -1027,5 +1312,50 @@ const styles = StyleSheet.create({
     width: "24%",
     backgroundColor: colors.neutral200,
     borderColor: colors.neutral200,
+  },
+  // calculator
+  calcDisplay: {
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._15,
+    borderCurve: "continuous",
+    padding: spacingY._15,
+    backgroundColor: colors.neutral900,
+    gap: scale(6),
+    marginBottom: spacingY._12,
+  },
+  calcGrid: {
+    gap: scale(10),
+  },
+  calcRow: {
+    flexDirection: "row",
+    gap: scale(10),
+  },
+  calcKey: {
+    flex: 1,
+    height: verticalScale(54),
+    borderRadius: radius._15,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.neutral800,
+    backgroundColor: colors.neutral900,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  calcKeyWide: {
+    flex: 2.05, // biar "Apply" lebar
+  },
+  calcKeyPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  calcOperator: {
+    backgroundColor: colors.neutral800,
+    borderColor: colors.neutral700,
+  },
+
+  calcOperatorActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
 });

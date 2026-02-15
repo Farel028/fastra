@@ -5,27 +5,30 @@ import {
   TransactionListType,
   TransactionType,
 } from "@/types";
+import { formatRupiah } from "@/utils/common";
 import { verticalScale } from "@/utils/styling";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import { Timestamp } from "firebase/firestore";
+import * as Icons from "phosphor-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Loading from "./Loading";
 import Typo from "./Typo";
-import { formatRupiah } from "@/utils/common";
 
 const TransactionList = ({
   data,
   title,
   loading,
   emptyListMessage,
+  fitParent = false,
+  disableItemAnimation = false,
 }: TransactionListType) => {
   const router = useRouter();
   const handleClick = (item: TransactionType) => {
     router.push({
-      pathname: "/(modals)/transactionModal",
+      pathname: "/transactionDetail",
       params: {
         id: item?.id,
         type: item?.type,
@@ -39,21 +42,28 @@ const TransactionList = ({
       },
     });
   };
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, fitParent && styles.containerFit]}>
       {title && (
         <Typo size={20} fontWeight={"500"}>
           {title}
         </Typo>
       )}
-      <View style={styles.list}>
+      <View style={[styles.list, fitParent && styles.listFit]}>
         <FlashList
           data={data}
+          keyExtractor={(item, index) =>
+            String(item?.id ?? `${item?.type}-${item?.walletId}-${index}`)
+          }
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
           renderItem={({ item, index }) => (
             <TransactionItem
               item={item}
               index={index}
               handleClick={handleClick}
+              disableAnimation={disableItemAnimation}
             />
           )}
         />
@@ -75,60 +85,107 @@ const TransactionList = ({
     </View>
   );
 };
+
 export const TransactionItem = ({
   item,
   index,
   handleClick,
+  disableAnimation = false,
 }: TransactionItemProps) => {
-  let category =
-    item.type == "income" ? incomeCategory : expenseCategories[item.category!];
-  const IconComponent = category.icon;
+  const type = String(item?.type ?? "").toLowerCase();
 
-  const date = (item?.date as Timestamp)
-    ?.toDate()
-    ?.toLocaleDateString("en-GB", {
+  const fallbackCategory = {
+    label: type === "transfer" ? "Transfer" : "Uncategorized",
+    bgColor: colors.neutral800,
+    icon: Icons.Receipt, // ganti kalau gak ada: Icons.FileText / Icons.Note
+  };
+
+  const resolveCategory = () => {
+    // income
+    if (type === "income") {
+      // kalau incomeCategory gak ada, fallback
+      return incomeCategory ?? fallbackCategory;
+    }
+
+    // expense
+    if (type === "expense") {
+      const key = String(item?.category ?? "");
+      const cat =
+        (expenseCategories as any)?.[key] ??
+        (expenseCategories as any)?.["others"] ??
+        (expenseCategories as any)?.["other"];
+
+      return cat ?? fallbackCategory;
+    }
+
+    // transfer / unknown
+    return fallbackCategory;
+  };
+
+  const cat = resolveCategory();
+  const IconComponent: any = cat?.icon;
+
+  const date =
+    (item?.date as any)?.toDate?.()?.toLocaleDateString?.("en-GB", {
+      day: "numeric",
+      month: "short",
+    }) ??
+    new Date(item?.date as any).toLocaleDateString("en-GB", {
       day: "numeric",
       month: "short",
     });
-  return (
-    <Animated.View entering={FadeInDown.delay(index * 70)}>
-      <TouchableOpacity style={styles.row} onPress={() => handleClick(item)}>
-        <View style={[styles.icon, { backgroundColor: category.bgColor }]}>
-          {IconComponent && (
-            <IconComponent
-              size={verticalScale(25)}
-              weight="fill"
-              color={colors.white}
-            />
-          )}
-        </View>
 
-        <View style={styles.categoryDesc}>
-          <Typo size={17}>{category.label}</Typo>
-          <Typo
-            size={12}
-            color={colors.neutral400}
-            textProps={{ numberOfLines: 1 }}
-          >
-            {item?.description}
-          </Typo>
-        </View>
+  const amountColor =
+    type === "income"
+      ? colors.primary
+      : type === "transfer"
+        ? colors.neutral200
+        : colors.rose;
 
-        <View style={styles.amountDate}>
-          <Typo
-            fontWeight={"500"}
-            color={item?.type == "income" ? colors.primary : colors.rose}
-          >
-            {item?.type === "income" ? "+ " : "- "}
-            {formatRupiah(item?.amount)}
-          </Typo>
-          <Typo size={13} color={colors.neutral400}>
-            {date}
-          </Typo>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
+  const sign = type === "income" ? "+ " : type === "expense" ? "- " : "";
+
+  const rowContent = (
+    <TouchableOpacity
+      activeOpacity={disableAnimation ? 1 : 0.85}
+      style={styles.row}
+      onPress={() => handleClick(item)}
+    >
+      <View style={[styles.icon, { backgroundColor: cat.bgColor }]}>
+        {IconComponent ? (
+          <IconComponent
+            size={verticalScale(25)}
+            weight="fill"
+            color={colors.white}
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.categoryDesc}>
+        <Typo size={17}>{cat.label}</Typo>
+        <Typo
+          size={12}
+          color={colors.neutral400}
+          textProps={{ numberOfLines: 1 }}
+        >
+          {item?.description}
+        </Typo>
+      </View>
+
+      <View style={styles.amountDate}>
+        <Typo fontWeight={"500"} color={amountColor}>
+          {sign}
+          {formatRupiah(item?.amount ?? 0)}
+        </Typo>
+        <Typo size={13} color={colors.neutral400}>
+          {date}
+        </Typo>
+      </View>
+    </TouchableOpacity>
   );
+
+  if (disableAnimation) return rowContent;
+
+  return <Animated.View entering={FadeInDown.delay(index * 70)}>{rowContent}</Animated.View>;
 };
 
 export default TransactionList;
@@ -137,8 +194,15 @@ const styles = StyleSheet.create({
   container: {
     gap: spacingY._17,
   },
+  containerFit: {
+    flex: 1,
+  },
   list: {
     minHeight: 3,
+  },
+  listFit: {
+    flex: 1,
+    minHeight: verticalScale(120),
   },
   row: {
     flexDirection: "row",
