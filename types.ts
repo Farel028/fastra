@@ -31,7 +31,7 @@ export type accountOptionType = {
   routeName?: any;
 };
 
-export type TypoProps = {
+export type TypoProps = TextProps & {
   size?: number;
   color?: string;
   fontWeight?: TextStyle["fontWeight"];

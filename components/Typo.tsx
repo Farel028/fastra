@@ -12,7 +12,7 @@ const Typo = ({
   style,
   textProps = {},
 }: TypoProps) => {
-  const textStyle: TextStyle = {
+   const textStyle: TextStyle = {
     fontSize: size ? verticalScale(size) : verticalScale(18),
     color,
     fontWeight,
