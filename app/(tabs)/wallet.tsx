@@ -6,6 +6,7 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
 import { WalletType } from "@/types";
+import { formatRupiah } from "@/utils/common";
 import { verticalScale } from "@/utils/styling";
 import { useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
@@ -37,7 +38,7 @@ const Wallet = () => {
         <View style={styles.balanceView}>
           <View style={{ alignItems: "center" }}>
             <Typo size={45} fontWeight={"500"}>
-              ${getTotalBalance()?.toFixed(2)}
+              {formatRupiah(getTotalBalance())}
             </Typo>
             <Typo size={16} color={colors.neutral300}>
               Total Balance

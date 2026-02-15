@@ -8,6 +8,7 @@ import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Typo from "./Typo";
+import { formatRupiah } from "@/utils/common";
 
 const WalletListItem = ({
   item,
@@ -42,7 +43,7 @@ const WalletListItem = ({
         <View style={styles.nameContainer}>
           <Typo size={16}>{item?.name}</Typo>
           <Typo size={14} color={colors.neutral400}>
-            {item?.amount}
+            {formatRupiah(item?.amount)}
           </Typo>
         </View>
 

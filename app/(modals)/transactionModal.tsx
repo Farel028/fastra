@@ -14,6 +14,7 @@ import {
   deleteTransaction,
 } from "@/services/transactionService";
 import { TransactionType, WalletType } from "@/types";
+import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -201,7 +202,7 @@ const TransactionModal = () => {
               selectedTextStyle={styles.dropdownSelectedText}
               iconStyle={styles.dropdownIcon}
               data={wallets.map((wallet) => ({
-                label: `${wallet?.name} ($${wallet.amount})`,
+                label: `${wallet?.name} (${formatRupiah(wallet?.amount)})`,
                 value: wallet.id,
               }))}
               maxHeight={300}
