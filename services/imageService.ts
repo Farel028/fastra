@@ -40,15 +40,14 @@ export const uploadFileToCloudinary = async (
 };
 
 export const getProfileImage = (file: any) => {
-  if (file && typeof file == "string") return file;
-  if (file && typeof file == "object") return file.url;
-
+  const filePath = getFilePath(file);
+  if (filePath) return filePath;
   return require("../assets/images/defaultAvatar.png");
 };
 
 export const getFilePath = (file: any) => {
   if (file && typeof file == "string") return file;
-  if (file && typeof file == "object") return file.url;
+  if (file && typeof file == "object") return file.uri || file.url || null;
 
   return null;
 };

@@ -1,4 +1,5 @@
 import { HeaderProps } from "@/types";
+import { scale } from "@/utils/styling";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import Typo from "./Typo";

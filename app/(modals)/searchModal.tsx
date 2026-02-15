@@ -9,39 +9,35 @@ import useFetchData from "@/hooks/useFetchData";
 import { TransactionType } from "@/types";
 import { useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
-import React, { useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { StyleSheet, View } from "react-native";
 
 const SearchModal = () => {
-  const { user, updateUserData } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
   const router = useRouter();
   const [search, setSearch] = useState("");
 
   const constraints = [where("uid", "==", user?.uid), orderBy("date", "desc")];
 
-  const {
-    data: allTransactions,
-    error,
-    loading: transactionLoading,
-  } = useFetchData<TransactionType>("transactions", constraints);
+  const { data: allTransactions, loading: transactionLoading } =
+    useFetchData<TransactionType>("transactions", constraints);
 
-  const filteredTransactions = allTransactions.filter((item) => {
-    if (search.length > 1) {
-      if (
-        item.category?.toLowerCase()?.includes(search?.toLowerCase()) ||
-        item.type?.toLowerCase()?.includes(search?.toLowerCase()) ||
-        item.description?.toLowerCase()?.includes(search?.toLowerCase())
-      ) {
-        return true;
-      }
-      return false;
-    }
-    return true;
-  });
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredTransactions = useMemo(
+    () =>
+      allTransactions.filter((item) => {
+        if (normalizedSearch.length <= 1) return true;
+        return (
+          item.category?.toLowerCase()?.includes(normalizedSearch) ||
+          item.type?.toLowerCase()?.includes(normalizedSearch) ||
+          item.description?.toLowerCase()?.includes(normalizedSearch)
+        );
+      }),
+    [allTransactions, normalizedSearch],
+  );
 
   return (
-    <ModalWrapper style={{ backgroundColor: colors.neutral900 }}>
+    <ModalWrapper onClose={() => router.back()} swipeEnabled={false}>
       <View style={styles.container}>
         <Header
           title={"Search"}
@@ -49,7 +45,7 @@ const SearchModal = () => {
           style={{ marginBottom: spacingY._10 }}
         />
 
-        <ScrollView contentContainerStyle={styles.form}>
+        <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Input
               placeholder="shoes.."
@@ -59,14 +55,16 @@ const SearchModal = () => {
               onChangeText={(value) => setSearch(value)}
             />
           </View>
-          <View>
+          <View style={styles.listWrap}>
             <TransactionList
               loading={transactionLoading}
               data={filteredTransactions}
               emptyListMessage="No transactions match"
+              fitParent
+              disableItemAnimation
             />
           </View>
-        </ScrollView>
+        </View>
       </View>
     </ModalWrapper>
   );
@@ -82,15 +80,14 @@ const styles = StyleSheet.create({
   },
 
   form: {
+    flex: 1,
     gap: spacingY._30,
     marginTop: spacingY._15,
   },
-  avatarContainer: {
-    position: "relative",
-    alignSelf: "center",
-  },
-
   inputContainer: {
     gap: spacingY._10,
+  },
+  listWrap: {
+    flex: 1,
   },
 });

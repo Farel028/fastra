@@ -86,7 +86,7 @@ const WalletModal = () => {
   };
 
   return (
-    <ModalWrapper>
+    <ModalWrapper onClose={() => router.back()}>
       <View style={styles.container}>
         <Header
           title={oldWallet?.id ? "Update Wallet" : "New Wallet"}
