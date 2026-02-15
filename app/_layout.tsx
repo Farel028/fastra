@@ -26,6 +26,13 @@ const StackLayout = () => {
           animation: "slide_from_bottom",
         }}
       />
+      <Stack.Screen
+        name="(modals)/searchModal"
+        options={{
+          presentation: "modal",
+          animation: "slide_from_bottom",
+        }}
+      />
     </Stack>
   );
 };
