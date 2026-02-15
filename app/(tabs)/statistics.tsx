@@ -9,6 +9,7 @@ import {
   fetchWeeklyStats,
   fetchYearlyStats,
 } from "@/services/transactionService";
+import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import React, { useEffect, useState } from "react";
@@ -102,11 +103,13 @@ const Statistics = () => {
                   roundedTop
                   roundedBottom
                   hideRules
-                  yAxisLabelPrefix="$"
+                  formatYLabel={(value) =>
+                    formatRupiah(Number(value), "compact")
+                  }
                   yAxisThickness={0}
                   xAxisThickness={0}
                   yAxisLabelWidth={
-                    [1, 2].includes(activeIndex) ? scale(38) : scale(35)
+                    [1, 2].includes(activeIndex) ? scale(60) : scale(70)
                   }
                   yAxisTextStyle={{ color: colors.neutral350 }}
                   xAxisLabelTextStyle={{

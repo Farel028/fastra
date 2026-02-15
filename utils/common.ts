@@ -67,3 +67,31 @@ export const getYearsRange = (startYear: number, endYear: number): any => {
   // return result;
   return result.reverse();
 };
+
+export const formatRupiah = (
+  amount: any,
+  mode: "full" | "compact" = "full",
+) => {
+  if (!amount && amount !== 0) return "Rp 0";
+
+  if (mode === "full") {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(amount);
+  }
+
+  // Compact Mode
+  if (Math.abs(amount) >= 1_000_000_000) {
+    return `Rp ${(amount / 1_000_000_000).toFixed(1)}M`;
+  }
+  if (Math.abs(amount) >= 1_000_000) {
+    return `Rp ${(amount / 1_000_000).toFixed(1)}JT`;
+  }
+  if (Math.abs(amount) >= 1_000) {
+    return `Rp ${(amount / 1_000).toFixed(0)}K`;
+  }
+
+  return `Rp ${amount}`;
+};

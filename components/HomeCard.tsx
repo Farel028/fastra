@@ -2,6 +2,7 @@ import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
 import { WalletType } from "@/types";
+import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
@@ -51,7 +52,7 @@ const HomeCard = () => {
             />
           </View>
           <Typo color={colors.black} size={30} fontWeight={"bold"}>
-            $ {walletLoading ? "----" :getTotals()?.balance?.toFixed(2)}
+            {walletLoading ? "----" : formatRupiah(getTotals()?.balance)}
           </Typo>
         </View>
         <View style={styles.stats}>
@@ -70,7 +71,7 @@ const HomeCard = () => {
             </View>
             <View style={{ alignSelf: "center" }}>
               <Typo size={17} color={colors.green} fontWeight={"600"}>
-                $ {walletLoading ? "----" : getTotals()?.income?.toFixed(2)}
+                {walletLoading ? "----" : formatRupiah(getTotals()?.income)}
               </Typo>
             </View>
           </View>
@@ -90,7 +91,7 @@ const HomeCard = () => {
             </View>
             <View style={{ alignSelf: "center" }}>
               <Typo size={17} color={colors.rose} fontWeight={"600"}>
-                $ {walletLoading ? "----" :getTotals()?.expenses?.toFixed(2)}
+                {walletLoading ? "----" : formatRupiah(getTotals()?.expenses)}
               </Typo>
             </View>
           </View>

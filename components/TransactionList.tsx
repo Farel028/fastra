@@ -14,6 +14,7 @@ import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Loading from "./Loading";
 import Typo from "./Typo";
+import { formatRupiah } from "@/utils/common";
 
 const TransactionList = ({
   data,
@@ -118,7 +119,8 @@ export const TransactionItem = ({
             fontWeight={"500"}
             color={item?.type == "income" ? colors.primary : colors.rose}
           >
-            {`${item?.type == "income" ? "+ $" : "- $"}${item?.amount}`}
+            {item?.type === "income" ? "+ " : "- "}
+            {formatRupiah(item?.amount)}
           </Typo>
           <Typo size={13} color={colors.neutral400}>
             {date}
