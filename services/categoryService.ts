@@ -1,9 +1,10 @@
-import { expenseCategories } from "@/constants/data";
+import { expenseCategories, incomeCategories } from "@/constants/data";
 import { ExpenseCategoriesType } from "@/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Icons from "phosphor-react-native";
 
-const STORAGE_KEY = "entrack.expense_categories.v1";
+const EXPENSE_STORAGE_KEY = "entrack.expense_categories.v1";
+const INCOME_STORAGE_KEY = "entrack.income_categories.v1";
 
 const isPhosphorIcon = (
   key: string,
@@ -24,8 +25,9 @@ export const categoryIconMap: Record<string, Icons.Icon> = Object.entries(
 );
 
 export type CategoryIconName = string;
+export type CategoryKind = "expense" | "income";
 
-export type StoredExpenseCategory = {
+export type StoredCategory = {
   label: string;
   value: string;
   bgColor: string;
@@ -33,7 +35,17 @@ export type StoredExpenseCategory = {
   isDefault: boolean;
 };
 
+export type StoredExpenseCategory = StoredCategory;
+export type StoredIncomeCategory = StoredCategory;
+
 const defaultCategoryIconByValue: Record<string, CategoryIconName> = {
+  salary: "WalletIcon",
+  bonus: "GiftIcon",
+  freelance: "MoneyWavyIcon",
+  business: "BuildingOfficeIcon",
+  investment: "PiggyBankIcon",
+  refund: "ReceiptIcon",
+  others_income: "CurrencyDollarSimpleIcon",
   groceries: "ShoppingCartIcon",
   rent: "HouseIcon",
   utilities: "LightbulbIcon",
@@ -81,8 +93,8 @@ export const normalizeHexColor = (
 
 const sanitizeStoredCategory = (
   raw: any,
-  fallback?: Partial<StoredExpenseCategory>,
-): StoredExpenseCategory | null => {
+  fallback?: Partial<StoredCategory>,
+): StoredCategory | null => {
   const value = slugify(raw?.value ?? fallback?.value);
   const label = normalizeLabel(raw?.label ?? fallback?.label);
 
@@ -114,17 +126,30 @@ export const DEFAULT_EXPENSE_CATEGORIES: StoredExpenseCategory[] = Object.values
   isDefault: true,
 }));
 
-const mergeWithDefaults = (rawItems: any[]): StoredExpenseCategory[] => {
+export const DEFAULT_INCOME_CATEGORIES: StoredIncomeCategory[] = Object.values(
+  incomeCategories,
+).map((cat) => ({
+  label: cat.label,
+  value: cat.value,
+  bgColor: cat.bgColor,
+  iconName: defaultCategoryIconByValue[cat.value] ?? "DotsThreeOutlineIcon",
+  isDefault: true,
+}));
+
+const mergeWithDefaults = (
+  rawItems: any[],
+  defaults: StoredCategory[],
+): StoredCategory[] => {
   const parsed = rawItems
     .map((item) => sanitizeStoredCategory(item))
-    .filter(Boolean) as StoredExpenseCategory[];
+    .filter(Boolean) as StoredCategory[];
 
-  const parsedMap = new Map<string, StoredExpenseCategory>();
+  const parsedMap = new Map<string, StoredCategory>();
   parsed.forEach((item) => {
     if (!parsedMap.has(item.value)) parsedMap.set(item.value, item);
   });
 
-  const withDefaults = DEFAULT_EXPENSE_CATEGORIES.map((def) => {
+  const withDefaults = defaults.map((def) => {
     const maybe = parsedMap.get(def.value);
     if (!maybe) return def;
 
@@ -149,15 +174,35 @@ export const loadExpenseCategories = async (): Promise<
   StoredExpenseCategory[]
 > => {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(EXPENSE_STORAGE_KEY);
     if (!raw) return DEFAULT_EXPENSE_CATEGORIES;
 
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return DEFAULT_EXPENSE_CATEGORIES;
 
-    return mergeWithDefaults(parsed);
+    return mergeWithDefaults(
+      parsed,
+      DEFAULT_EXPENSE_CATEGORIES,
+    ) as StoredExpenseCategory[];
   } catch {
     return DEFAULT_EXPENSE_CATEGORIES;
+  }
+};
+
+export const loadIncomeCategories = async (): Promise<StoredIncomeCategory[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(INCOME_STORAGE_KEY);
+    if (!raw) return DEFAULT_INCOME_CATEGORIES;
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_INCOME_CATEGORIES;
+
+    return mergeWithDefaults(
+      parsed,
+      DEFAULT_INCOME_CATEGORIES,
+    ) as StoredIncomeCategory[];
+  } catch {
+    return DEFAULT_INCOME_CATEGORIES;
   }
 };
 
@@ -168,7 +213,17 @@ export const saveExpenseCategories = async (
     .map((item) => sanitizeStoredCategory(item))
     .filter(Boolean) as StoredExpenseCategory[];
 
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+  await AsyncStorage.setItem(EXPENSE_STORAGE_KEY, JSON.stringify(sanitized));
+};
+
+export const saveIncomeCategories = async (
+  items: StoredIncomeCategory[],
+): Promise<void> => {
+  const sanitized = items
+    .map((item) => sanitizeStoredCategory(item))
+    .filter(Boolean) as StoredIncomeCategory[];
+
+  await AsyncStorage.setItem(INCOME_STORAGE_KEY, JSON.stringify(sanitized));
 };
 
 export const createExpenseCategoryMap = (
@@ -191,6 +246,10 @@ export const createExpenseCategoryMap = (
 
   return map;
 };
+
+export const createIncomeCategoryMap = (
+  items: StoredIncomeCategory[],
+): ExpenseCategoriesType => createExpenseCategoryMap(items);
 
 export const buildUniqueCategoryValue = (
   label: string,

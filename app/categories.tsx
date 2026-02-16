@@ -4,11 +4,12 @@ import ScreenWrapper from "@/components/ScreenWrapper";
 import Typo from "@/components/Typo";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useCategories } from "@/contexts/categoryContext";
+import { CategoryKind } from "@/services/categoryService";
 import { categoryIconMap } from "@/services/categoryService";
 import { verticalScale } from "@/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -19,26 +20,36 @@ import {
 
 const Categories = () => {
   const router = useRouter();
-  const { categoryList, loading, resetCategories } = useCategories();
+  const { expenseCategoryList, incomeCategoryList, loading, resetCategories } =
+    useCategories();
+  const [kind, setKind] = useState<CategoryKind>("expense");
+
+  const categoryList = useMemo(
+    () => (kind === "income" ? incomeCategoryList : expenseCategoryList),
+    [expenseCategoryList, incomeCategoryList, kind],
+  );
 
   const onOpenModal = (value?: string) => {
     router.push({
       pathname: "/(modals)/categoryModal",
-      params: value ? { value } : {},
+      params: {
+        kind,
+        ...(value ? { value } : {}),
+      },
     });
   };
 
   const onReset = () => {
     Alert.alert(
-      "Reset Categories",
-      "This will restore all category labels, colors, and icons to default.",
+      `Reset ${kind === "income" ? "Income" : "Expense"} Categories`,
+      "This will restore all labels, colors, and icons to default for selected type.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            await resetCategories();
+            await resetCategories(kind);
           },
         },
       ],
@@ -53,6 +64,28 @@ const Categories = () => {
           leftIcon={<BackButton />}
           style={{ marginVertical: spacingY._10 }}
         />
+
+        <View style={styles.typeSegment}>
+          {(["expense", "income"] as CategoryKind[]).map((item) => {
+            const active = kind === item;
+            return (
+              <TouchableOpacity
+                key={item}
+                activeOpacity={0.88}
+                style={[styles.typeItem, active && styles.typeItemActive]}
+                onPress={() => setKind(item)}
+              >
+                <Typo
+                  size={13}
+                  fontWeight={"800"}
+                  color={active ? colors.black : colors.white}
+                >
+                  {item === "income" ? "Income" : "Expense"}
+                </Typo>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <View style={styles.topActionRow}>
           <TouchableOpacity
@@ -84,7 +117,7 @@ const Categories = () => {
 
         <Typo size={13} color={colors.neutral400} style={styles.subtext}>
           Default categories stay available. You can edit their look and add your
-          own categories.
+          own {kind} categories.
         </Typo>
 
         <ScrollView
@@ -92,7 +125,7 @@ const Categories = () => {
           showsVerticalScrollIndicator={false}
         >
           {categoryList.map((item) => {
-            const Icon = categoryIconMap[item.iconName];
+            const Icon = categoryIconMap[item.iconName] ?? Icons.DotsThreeOutlineIcon;
             return (
               <View key={item.value} style={styles.row}>
                 <View style={[styles.iconWrap, { backgroundColor: item.bgColor }]}>
@@ -158,6 +191,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacingX._10,
     marginTop: spacingY._10,
+  },
+  typeSegment: {
+    marginTop: spacingY._7,
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._12,
+    backgroundColor: colors.neutral900,
+    padding: spacingY._5,
+    gap: spacingX._5,
+  },
+  typeItem: {
+    flex: 1,
+    height: verticalScale(34),
+    borderRadius: radius._10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeItemActive: {
+    backgroundColor: colors.primary,
   },
   topBtn: {
     flex: 1,

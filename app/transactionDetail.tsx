@@ -2,7 +2,11 @@ import BackButton from "@/components/BackButton";
 import Header from "@/components/Header";
 import ScreenWrapper from "@/components/ScreenWrapper";
 import Typo from "@/components/Typo";
-import { debtCategory, incomeCategory, transferCategory } from "@/constants/data";
+import {
+  debtCategory,
+  incomeCategory,
+  transferCategory,
+} from "@/constants/data";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import { useCategories } from "@/contexts/categoryContext";
@@ -64,7 +68,7 @@ export default function TransactionDetail() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { categories: expenseCategories } = useCategories();
+  const { categories: expenseCategories, incomeCategories } = useCategories();
 
   const [loading, setLoading] = useState(false);
 
@@ -170,8 +174,14 @@ export default function TransactionDetail() {
   const category = useMemo(() => {
     if (isDebtTransaction) return debtCategory;
     if (isTransferTransaction) return transferCategory;
-    if (type === "income") return incomeCategory;
-    return expenseCategories[categoryValue as any];
+    if (type === "income") {
+      return (incomeCategories as any)?.[categoryValue] ?? incomeCategory;
+    }
+    return (
+      (expenseCategories as any)?.[categoryValue] ??
+      (expenseCategories as any)?.others ??
+      (expenseCategories as any)?.other
+    );
   }, [
     isDebtTransaction,
     isTransferTransaction,
