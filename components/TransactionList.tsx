@@ -220,7 +220,7 @@ export const TransactionItem = ({
   disableAnimation = false,
   descriptionText,
 }: TransactionItemProps) => {
-  const { categories: expenseCategories } = useCategories();
+  const { categories: expenseCategories, incomeCategories } = useCategories();
   const type = String(item?.type ?? "").toLowerCase();
   const isDebt = Boolean(parseDebtMeta(item?.description));
   const isTransfer = Boolean((item as any)?.isTransfer);
@@ -242,8 +242,9 @@ export const TransactionItem = ({
 
     // income
     if (type === "income") {
-      // kalau incomeCategory gak ada, fallback
-      return incomeCategory ?? fallbackCategory;
+      const key = String(item?.category ?? "");
+      const cat = (incomeCategories as any)?.[key];
+      return cat ?? incomeCategory ?? fallbackCategory;
     }
 
     // expense

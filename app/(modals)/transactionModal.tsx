@@ -60,7 +60,42 @@ const clampOneLine = (t?: string) => (t ?? "").replace(/\s+/g, " ").trim();
 
 const TransactionModal = () => {
   const { user } = useAuth();
-  const { categories: expenseCategories } = useCategories();
+  const { categories: expenseCategories, incomeCategories } = useCategories();
+  const expenseCategoryValues = useMemo(
+    () => Object.values(expenseCategories),
+    [expenseCategories],
+  );
+  const incomeCategoryValues = useMemo(
+    () => Object.values(incomeCategories),
+    [incomeCategories],
+  );
+  const defaultExpenseCategory = expenseCategoryValues[0]?.value ?? "";
+  const defaultIncomeCategory = incomeCategoryValues[0]?.value ?? "";
+
+  const resolveCategoryByType = useCallback(
+    (type: string, currentValue?: string) => {
+      const current = String(currentValue ?? "");
+
+      if (type === "expense") {
+        if (current && (expenseCategories as any)?.[current]) return current;
+        return defaultExpenseCategory;
+      }
+
+      if (type === "income") {
+        if (current && (incomeCategories as any)?.[current]) return current;
+        return defaultIncomeCategory;
+      }
+
+      return "";
+    },
+    [
+      defaultExpenseCategory,
+      defaultIncomeCategory,
+      expenseCategories,
+      incomeCategories,
+    ],
+  );
+
   const router = useRouter();
   useFocusEffect(
     useCallback(() => {
@@ -97,6 +132,12 @@ const TransactionModal = () => {
     walletId: "",
     image: null,
   });
+
+  const selectableCategories = useMemo(() => {
+    if (transaction.type === "expense") return expenseCategoryValues;
+    if (transaction.type === "income") return incomeCategoryValues;
+    return [];
+  }, [expenseCategoryValues, incomeCategoryValues, transaction.type]);
 
   const [loading, setLoading] = useState(false);
   const [amountStr, setAmountStr] = useState("0");
@@ -309,12 +350,13 @@ const TransactionModal = () => {
   useEffect(() => {
     if (oldTransaction?.id) {
       const amt = Number(oldTransaction.amount ?? 0);
+      const oldType = (oldTransaction.type as any) ?? "expense";
 
       setTransaction({
-        type: (oldTransaction.type as any) ?? "expense",
+        type: oldType,
         amount: amt,
         description: oldTransaction.description ?? "",
-        category: oldTransaction.category ?? "",
+        category: resolveCategoryByType(oldType, oldTransaction.category),
         date: oldTransaction.date ? new Date(oldTransaction.date) : new Date(),
         walletId: oldTransaction.walletId ?? "",
         image: oldTransaction.image ?? null,
@@ -327,6 +369,22 @@ const TransactionModal = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (oldTransaction?.id) return;
+    if (transaction.type === ("transfer" as any)) return;
+    if (transaction.category) return;
+
+    const nextCategory = resolveCategoryByType(transaction.type, "");
+    if (!nextCategory) return;
+
+    setTransaction((p) => ({ ...p, category: nextCategory }));
+  }, [
+    oldTransaction?.id,
+    resolveCategoryByType,
+    transaction.category,
+    transaction.type,
+  ]);
 
   // âœ… auto-select "wallet utama" (wallet paling baru dari query)
   useEffect(() => {
@@ -344,9 +402,10 @@ const TransactionModal = () => {
   const submitDisabled =
     loading ||
     Number(amountStr) <= 0 ||
-    (transaction.type === "expense" && !transaction.category) ||
-    (transaction.type === "income" && !transaction.walletId) ||
-    (transaction.type === "expense" && !transaction.walletId) ||
+    ((transaction.type === "expense" || transaction.type === "income") &&
+      !transaction.category) ||
+    ((transaction.type === "expense" || transaction.type === "income") &&
+      !transaction.walletId) ||
     (transaction.type === ("transfer" as any) &&
       (!transferFromId || !transferToId));
 
@@ -385,7 +444,12 @@ const TransactionModal = () => {
     const { type, amount, description, category, date, walletId, image } =
       transaction;
 
-    if (!walletId || !date || !amount || (type == "expense" && !category)) {
+    if (
+      !walletId ||
+      !date ||
+      !amount ||
+      ((type == "expense" || type === "income") && !category)
+    ) {
       Alert.alert("Transaction", "Please fill all the field");
       return;
     }
@@ -463,7 +527,8 @@ const TransactionModal = () => {
     setTransaction((p) => ({
       ...p,
       type: value as any,
-      category: value === "expense" ? p.category : "",
+      category:
+        value === "transfer" ? "" : resolveCategoryByType(value, p.category),
       walletId: value === "transfer" ? "" : p.walletId,
     }));
 
@@ -557,14 +622,15 @@ const TransactionModal = () => {
             </TouchableOpacity>
           </View>
 
-          {/* CATEGORY ICON ROW (expense only) */}
-          {transaction.type === "expense" && (
+          {/* CATEGORY ICON ROW (expense & income) */}
+          {transaction.type !== ("transfer" as any) &&
+            selectableCategories.length > 0 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.catRow}
             >
-              {Object.values(expenseCategories).map((cat) => {
+              {selectableCategories.map((cat) => {
                 const active = transaction.category === cat.value;
                 const IconComp: any = cat.icon;
 

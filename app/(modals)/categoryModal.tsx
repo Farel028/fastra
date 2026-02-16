@@ -9,6 +9,7 @@ import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useCategories } from "@/contexts/categoryContext";
 import {
   CategoryIconName,
+  CategoryKind,
   availableCategoryIcons,
   categoryIconMap,
   normalizeHexColor,
@@ -129,13 +130,23 @@ const getContrastColor = (hexColor: string) => {
 const CategoryModal = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { categoryList, addCategory, updateCategory, deleteCategory } =
-    useCategories();
+  const {
+    expenseCategoryList,
+    incomeCategoryList,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+  } = useCategories();
+
+  const kindParam = first(params.kind);
+  const kind: CategoryKind = kindParam === "income" ? "income" : "expense";
+  const categoryList =
+    kind === "income" ? incomeCategoryList : expenseCategoryList;
 
   const editingValue = first(params.value);
   const editingCategory = useMemo(
     () => categoryList.find((item) => item.value === editingValue),
-    [categoryList, editingValue],
+    [categoryList, editingValue, kind],
   );
 
   const isEditing = Boolean(editingCategory);
@@ -213,12 +224,12 @@ const CategoryModal = () => {
     setSaving(true);
 
     const res = isEditing
-      ? await updateCategory(editingCategory!.value, {
+      ? await updateCategory(kind, editingCategory!.value, {
           label: cleanLabel,
           bgColor: colorToSave,
           iconName,
         })
-      : await addCategory({
+      : await addCategory(kind, {
           label: cleanLabel,
           bgColor: colorToSave,
           iconName,
@@ -247,7 +258,7 @@ const CategoryModal = () => {
           style: "destructive",
           onPress: async () => {
             setSaving(true);
-            const res = await deleteCategory(editingCategory.value);
+            const res = await deleteCategory(kind, editingCategory.value);
             setSaving(false);
 
             if (!res.success) {
@@ -269,7 +280,11 @@ const CategoryModal = () => {
     <ModalWrapper onClose={() => router.back()}>
       <View style={styles.container}>
         <Header
-          title={isEditing ? "Update Category" : "New Category"}
+          title={
+            isEditing
+              ? `Update ${kind === "income" ? "Income" : "Expense"} Category`
+              : `New ${kind === "income" ? "Income" : "Expense"} Category`
+          }
           leftIcon={<BackButton />}
           style={{ marginBottom: spacingY._10 }}
         />
@@ -287,7 +302,9 @@ const CategoryModal = () => {
                 {label.trim() || "Category Name"}
               </Typo>
               <Typo size={12} color={colors.neutral400}>
-                {isEditing ? editingCategory?.value : "new-category"}
+                {isEditing
+                  ? `${kind} • ${editingCategory?.value}`
+                  : `${kind} • new-category`}
               </Typo>
             </View>
           </View>

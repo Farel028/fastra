@@ -78,12 +78,53 @@ export const expenseCategories: ExpenseCategoriesType = {
   },
 };
 
-export const incomeCategory: CategoryType = {
-  label: "Income",
-  value: "income",
-  icon: Icons.CurrencyDollarSimpleIcon,
-  bgColor: "#16a34a", // Dark
+export const incomeCategories: ExpenseCategoriesType = {
+  salary: {
+    label: "Salary",
+    value: "salary",
+    icon: Icons.WalletIcon,
+    bgColor: "#16A34A",
+  },
+  bonus: {
+    label: "Bonus",
+    value: "bonus",
+    icon: Icons.GiftIcon,
+    bgColor: "#0EA5E9",
+  },
+  freelance: {
+    label: "Freelance",
+    value: "freelance",
+    icon: Icons.MoneyWavyIcon,
+    bgColor: "#22C55E",
+  },
+  business: {
+    label: "Business",
+    value: "business",
+    icon: Icons.BuildingOfficeIcon,
+    bgColor: "#0284C7",
+  },
+  investment: {
+    label: "Investment",
+    value: "investment",
+    icon: Icons.PiggyBankIcon,
+    bgColor: "#0F766E",
+  },
+  refund: {
+    label: "Refund",
+    value: "refund",
+    icon: Icons.ReceiptIcon,
+    bgColor: "#14B8A6",
+  },
+  others_income: {
+    label: "Others",
+    value: "others_income",
+    icon: Icons.CurrencyDollarSimpleIcon,
+    bgColor: "#525252",
+  },
 };
+
+// Compatibility fallback for older income transactions that have no category.
+export const incomeCategory: CategoryType = incomeCategories.salary;
 
 export const transferCategory: CategoryType = {
   label: "Transfer",
