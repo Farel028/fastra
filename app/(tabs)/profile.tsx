@@ -29,6 +29,7 @@ const Profile = () => {
     {
       title: "Settings",
       icon: <Icons.GearSixIcon size={26} color={colors.white} weight="fill" />,
+      routeName: "/settings",
       bgColor: "#059669",
     },
     {

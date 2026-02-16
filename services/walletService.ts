@@ -6,6 +6,8 @@ import {
   doc,
   getDocs,
   query,
+  runTransaction,
+  serverTimestamp,
   setDoc,
   where,
   writeBatch,
@@ -91,3 +93,72 @@ export const deleteTransactionByWalletId = async (
     return { success: false, msg: err.message };
   }
 };
+
+export const SYSTEM_WALLET_IDS = (uid: string) => ({
+  payable: `__payable__${uid}`,
+  receivable: `__receivable__${uid}`,
+});
+
+export const isSystemWalletId = (id?: string) =>
+  !!id &&
+  (id.startsWith("__payable__") || id.startsWith("__receivable__"));
+
+export const isSystemWallet = (wallet: WalletType) => {
+  const id = String((wallet as any)?.id ?? "");
+  const name = String(wallet?.name ?? "").trim().toLowerCase();
+
+  return (
+    wallet?.hidden === true ||
+    wallet?.isSystem === true ||
+    isSystemWalletId(id) ||
+    name === "payable" ||
+    name === "receivable"
+  );
+};
+
+
+export const ensureSystemWallets = async (uid: string) => {
+  if (!uid) throw new Error("uid wajib");
+
+  const ids = SYSTEM_WALLET_IDS(uid);
+
+  const payableRef = doc(firestore, "wallets", ids.payable);
+  const receivableRef = doc(firestore, "wallets", ids.receivable);
+
+  await runTransaction(firestore, async (t) => {
+    const pSnap = await t.get(payableRef);
+    const rSnap = await t.get(receivableRef);
+
+    if (!pSnap.exists()) {
+      const data: WalletType = {
+        uid,
+        name: "Payable",
+        amount: 0,
+        image: null,
+        hidden: true,
+        isSystem: true,
+      };
+      t.set(payableRef, { ...data, created: serverTimestamp() });
+    }
+
+    if (!rSnap.exists()) {
+      const data: WalletType = {
+        uid,
+        name: "Receivable",
+        amount: 0,
+        image: null,
+        hidden: true,
+        isSystem: true,
+      };
+      t.set(receivableRef, { ...data, created: serverTimestamp() });
+    }
+  });
+
+  return ids;
+};
+
+/**
+ * ✅ helper buat filter wallet yang tampil di UI (My Wallet / picker normal)
+ */
+export const filterVisibleWallets = (wallets: WalletType[]) =>
+  wallets.filter((w) => !isSystemWallet(w));

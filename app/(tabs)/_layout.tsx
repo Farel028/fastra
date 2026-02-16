@@ -1,7 +1,6 @@
 import CustomTabs from "@/components/CustomTabs";
 import { Tabs } from "expo-router";
 import React from "react";
-import { StyleSheet } from "react-native";
 
 const _layout = () => {
   return (
@@ -13,10 +12,10 @@ const _layout = () => {
       <Tabs.Screen name="statistics" />
       <Tabs.Screen name="wallet" />
       <Tabs.Screen name="profile" />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="categories" options={{ href: null }} />
     </Tabs>
   );
 };
 
 export default _layout;
-
-const styles = StyleSheet.create({});

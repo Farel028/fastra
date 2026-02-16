@@ -1,5 +1,7 @@
-import { expenseCategories, incomeCategory } from "@/constants/data";
+import { incomeCategory } from "@/constants/data";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { useCategories } from "@/contexts/categoryContext";
+import { isSystemWalletId } from "@/services/walletService";
 import {
   TransactionItemProps,
   TransactionListType,
@@ -11,11 +13,56 @@ import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import { Timestamp } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Loading from "./Loading";
 import Typo from "./Typo";
+
+type DebtMeta = {
+  event: "DEBT" | "PAYMENT";
+  debtId: string;
+};
+
+const parseDebtMeta = (description?: string): DebtMeta | null => {
+  const raw = String(description ?? "").trim();
+  const match = /^\[(DEBT|PAYMENT):([^\]]+)\]/i.exec(raw);
+  if (!match) return null;
+
+  const event = String(match[1] ?? "").toUpperCase();
+  const debtId = String(match[2] ?? "").trim();
+  if (!debtId) return null;
+
+  return {
+    event: event === "PAYMENT" ? "PAYMENT" : "DEBT",
+    debtId,
+  };
+};
+
+const parseDebtDisplay = (
+  description?: string,
+): { personName: string; note: string } | null => {
+  const raw = String(description ?? "").trim();
+  const meta = parseDebtMeta(raw);
+  if (!meta) return null;
+
+  const payload = raw.replace(/^\[(?:DEBT|PAYMENT):[^\]]+\]\s*/i, "").trim();
+  if (!payload) return null;
+
+  const oldFormat = /^(?:PIUTANG|HUTANG)\s*-\s*(.+)$/i.exec(payload);
+  if (oldFormat) {
+    const personName = String(oldFormat[1] ?? "").trim();
+    if (!personName) return null;
+    return { personName, note: "-" };
+  }
+
+  const parts = payload.split(" - ");
+  const personName = String(parts.shift() ?? "").trim();
+  if (!personName) return null;
+
+  const note = parts.join(" - ").trim() || "-";
+  return { personName, note };
+};
 
 const TransactionList = ({
   data,
@@ -26,6 +73,21 @@ const TransactionList = ({
   disableItemAnimation = false,
 }: TransactionListType) => {
   const router = useRouter();
+
+  const visibleData = useMemo(
+    () =>
+      (data ?? []).filter(
+        (item) => !isSystemWalletId(String(item?.walletId ?? "")),
+      ),
+    [data],
+  );
+
+  const getDisplayDescription = (item: TransactionType) => {
+    const parsed = parseDebtDisplay(item?.description);
+    if (!parsed) return String(item?.description ?? "");
+    return `${parsed.personName} - ${parsed.note}`;
+  };
+
   const handleClick = (item: TransactionType) => {
     router.push({
       pathname: "/transactionDetail",
@@ -52,7 +114,7 @@ const TransactionList = ({
       )}
       <View style={[styles.list, fitParent && styles.listFit]}>
         <FlashList
-          data={data}
+          data={visibleData}
           keyExtractor={(item, index) =>
             String(item?.id ?? `${item?.type}-${item?.walletId}-${index}`)
           }
@@ -64,11 +126,12 @@ const TransactionList = ({
               index={index}
               handleClick={handleClick}
               disableAnimation={disableItemAnimation}
+              descriptionText={getDisplayDescription(item)}
             />
           )}
         />
       </View>
-      {!loading && data.length == 0 && (
+      {!loading && visibleData.length === 0 && (
         <Typo
           size={15}
           color={colors.neutral400}
@@ -91,7 +154,9 @@ export const TransactionItem = ({
   index,
   handleClick,
   disableAnimation = false,
+  descriptionText,
 }: TransactionItemProps) => {
+  const { categories: expenseCategories } = useCategories();
   const type = String(item?.type ?? "").toLowerCase();
 
   const fallbackCategory = {
@@ -167,7 +232,7 @@ export const TransactionItem = ({
           color={colors.neutral400}
           textProps={{ numberOfLines: 1 }}
         >
-          {item?.description}
+          {descriptionText ?? item?.description}
         </Typo>
       </View>
 

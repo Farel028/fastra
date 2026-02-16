@@ -497,9 +497,16 @@ export const createTransferTransaction = async (args: {
       if (fromWallet.uid !== uid || toWallet.uid !== uid)
         throw new Error("Wallet bukan milik user");
 
-      // --- cek saldo cukup (kalau kamu mau boleh dihapus)
+      // --- cek saldo cukup (skip kalau from wallet adalah Payable system)
       const fromAmount = Number(fromWallet.amount ?? 0);
-      if (fromAmount < amount) throw new Error("Saldo from wallet tidak cukup");
+
+      // ✅ allowNegative untuk payable/system wallet
+      const allowNegative =
+        fromWallet.isSystem === true || fromWalletId.startsWith("__payable__");
+
+      if (!allowNegative && fromAmount < amount) {
+        throw new Error("Saldo from wallet tidak cukup");
+      }
 
       // --- update balances (atomic)
       t.update(fromRef, { amount: increment(-amount) });
@@ -548,7 +555,7 @@ export const createTransferTransaction = async (args: {
       });
     });
 
-    return { success: true, msg: "Transfer sukses" };
+    return { success: true, msg: "Transfer sukses", data: { transferId } };
   } catch (e: any) {
     return { success: false, msg: e?.message || "Transfer gagal" };
   }
@@ -616,3 +623,4 @@ export const deleteTransferTransactions = async (
     return { success: false, msg: e?.message || "Failed to delete transfer" };
   }
 };
+

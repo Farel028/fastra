@@ -104,6 +104,7 @@ export type TransactionItemProps = {
   index: number;
   handleClick: Function;
   disableAnimation?: boolean;
+  descriptionText?: string;
 };
 
 export interface InputProps extends TextInputProps {
@@ -173,4 +174,23 @@ export type WalletType = {
   image: any;
   uid?: string;
   created?: Date;
+  isSystem?: boolean;
+  hidden?: boolean;
+};
+
+export type DebtKind = "HUTANG" | "PIUTANG";
+
+export type DebtType = {
+  id?: string;
+  uid: string;
+  kind: DebtKind;
+  personName: string;
+  amount: number;
+  paidAmount: number;
+  dueDate?: Date | null;
+  walletId: string;
+  note?: string;
+  status: "ONGOING" | "PAID";
+  created?: any;
+  updated?: any;
 };

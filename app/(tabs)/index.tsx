@@ -14,6 +14,15 @@ import * as Icons from "phosphor-react-native";
 import React from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 
+const homeFeatures = [
+  {
+    key: "debts",
+    label: "Debts",
+    route: "/debts",
+    icon: Icons.ReceiptIcon,
+  },
+];
+
 const Home = () => {
   const { user } = useAuth();
   const router = useRouter();
@@ -24,11 +33,8 @@ const Home = () => {
     limit(30),
   ];
 
-  const {
-    data: recentTransaction,
-    error,
-    loading: transactionLoading,
-  } = useFetchData<TransactionType>("transactions", constraints);
+  const { data: recentTransaction, loading: transactionLoading } =
+    useFetchData<TransactionType>("transactions", constraints);
   return (
     <ScreenWrapper>
       <View style={styles.container}>
@@ -37,7 +43,7 @@ const Home = () => {
             <Typo size={20} color={colors.neutral400}>
               Hi,{" "}
               <Typo size={20} fontWeight={"500"}>
-                  {user?.name}
+                {user?.name}
               </Typo>
             </Typo>
           </View>
@@ -60,6 +66,34 @@ const Home = () => {
           <View>
             <HomeCard />
           </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {homeFeatures.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <View key={feature.key} style={styles.featureItem}>
+                  <Button
+                    style={styles.featureButton}
+                    onPress={() => router.push(feature.route as any)}
+                  >
+                    <Icon
+                      size={verticalScale(24)}
+                      color={colors.black}
+                      weight="bold"
+                    />
+                  </Button>
+
+                  <Typo
+                    size={12}
+                    color={colors.neutral300}
+                    style={styles.featureLabel}
+                  >
+                    {feature.label}
+                  </Typo>
+                </View>
+              );
+            })}
+          </ScrollView>
 
           <TransactionList
             data={recentTransaction}
@@ -115,5 +149,18 @@ const styles = StyleSheet.create({
     marginTop: spacingY._10,
     paddingBottom: verticalScale(100),
     gap: spacingY._15,
+  },
+  featureItem: {
+    width: verticalScale(68),
+    alignItems: "center",
+    gap: spacingY._5,
+  },
+  featureButton: {
+    height: verticalScale(56),
+    width: verticalScale(56),
+    borderRadius: 100,
+  },
+  featureLabel: {
+    textAlign: "center",
   },
 });
