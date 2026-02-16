@@ -1,17 +1,24 @@
-import { incomeCategory } from "@/constants/data";
+import {
+  debtCategory,
+  incomeCategory,
+  transferCategory,
+} from "@/constants/data";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
+import { useAuth } from "@/contexts/authContext";
 import { useCategories } from "@/contexts/categoryContext";
+import useFetchData from "@/hooks/useFetchData";
 import { isSystemWalletId } from "@/services/walletService";
 import {
   TransactionItemProps,
   TransactionListType,
   TransactionType,
+  WalletType,
 } from "@/types";
 import { formatRupiah } from "@/utils/common";
 import { verticalScale } from "@/utils/styling";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
-import { Timestamp } from "firebase/firestore";
+import { Timestamp, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
 import React, { useMemo } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
@@ -64,6 +71,9 @@ const parseDebtDisplay = (
   return { personName, note };
 };
 
+const getWalletId = (w: WalletType) =>
+  String((w as any)?.id ?? (w as any)?.docId ?? (w as any)?.walletId ?? "");
+
 const TransactionList = ({
   data,
   title,
@@ -73,19 +83,73 @@ const TransactionList = ({
   disableItemAnimation = false,
 }: TransactionListType) => {
   const router = useRouter();
+  const { user } = useAuth();
+
+  const walletConstraints = useMemo(
+    () => (user?.uid ? [where("uid", "==", user.uid)] : []),
+    [user?.uid],
+  );
+
+  const { data: walletsRaw } = useFetchData<WalletType>(
+    user?.uid ? "wallets" : "",
+    walletConstraints,
+  );
+
+  const walletNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (walletsRaw ?? []).forEach((w) => {
+      const id = getWalletId(w);
+      if (id) map.set(id, String(w?.name ?? "").trim() || "Wallet");
+    });
+    return map;
+  }, [walletsRaw]);
 
   const visibleData = useMemo(
     () =>
       (data ?? []).filter(
-        (item) => !isSystemWalletId(String(item?.walletId ?? "")),
+        (item) => {
+          if (isSystemWalletId(String(item?.walletId ?? ""))) return false;
+
+          const isTransfer = Boolean((item as any)?.isTransfer);
+          if (!isTransfer) return true;
+
+          const transferSide = String((item as any)?.transferSide ?? "").toLowerCase();
+          const transferFromId = String((item as any)?.transferFromId ?? "");
+          const walletId = String(item?.walletId ?? "");
+
+          // Hide transfer from-wallet side (outgoing / white item)
+          if (transferSide === "out") return false;
+          if (transferFromId && walletId === transferFromId) return false;
+
+          return true;
+        },
       ),
     [data],
   );
 
   const getDisplayDescription = (item: TransactionType) => {
+    const isDebt = Boolean(parseDebtMeta(item?.description));
+    if (isDebt) {
+      const parsed = parseDebtDisplay(item?.description);
+      if (!parsed) return String(item?.description ?? "");
+      return `${parsed.personName} - ${parsed.note}`;
+    }
+
+    const isTransfer = Boolean((item as any)?.isTransfer);
+    if (isTransfer) {
+      const plain = String(item?.description ?? "").trim();
+      if (plain) return plain;
+
+      const fromId = String((item as any)?.transferFromId ?? "");
+      const toId = String((item as any)?.transferToId ?? "");
+      const fromName = walletNameById.get(fromId) ?? "from";
+      const toName = walletNameById.get(toId) ?? "to";
+      return `Transfer ${fromName} -> ${toName}`;
+    }
+
     const parsed = parseDebtDisplay(item?.description);
-    if (!parsed) return String(item?.description ?? "");
-    return `${parsed.personName} - ${parsed.note}`;
+    if (parsed) return `${parsed.personName} - ${parsed.note}`;
+    return String(item?.description ?? "");
   };
 
   const handleClick = (item: TransactionType) => {
@@ -158,14 +222,24 @@ export const TransactionItem = ({
 }: TransactionItemProps) => {
   const { categories: expenseCategories } = useCategories();
   const type = String(item?.type ?? "").toLowerCase();
+  const isDebt = Boolean(parseDebtMeta(item?.description));
+  const isTransfer = Boolean((item as any)?.isTransfer);
 
   const fallbackCategory = {
-    label: type === "transfer" ? "Transfer" : "Uncategorized",
+    label: isDebt ? "Debt" : isTransfer ? "Transfer" : "Uncategorized",
     bgColor: colors.neutral800,
-    icon: Icons.Receipt, // ganti kalau gak ada: Icons.FileText / Icons.Note
+    icon: Icons.ReceiptIcon,
   };
 
   const resolveCategory = () => {
+    if (isDebt) {
+      return debtCategory ?? fallbackCategory;
+    }
+
+    if (isTransfer) {
+      return transferCategory ?? fallbackCategory;
+    }
+
     // income
     if (type === "income") {
       // kalau incomeCategory gak ada, fallback
@@ -203,11 +277,12 @@ export const TransactionItem = ({
   const amountColor =
     type === "income"
       ? colors.primary
-      : type === "transfer"
+      : isTransfer
         ? colors.neutral200
         : colors.rose;
 
-  const sign = type === "income" ? "+ " : type === "expense" ? "- " : "";
+  const sign =
+    isTransfer ? "" : type === "income" ? "+ " : type === "expense" ? "- " : "";
 
   const rowContent = (
     <TouchableOpacity

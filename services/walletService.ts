@@ -35,9 +35,9 @@ export const createOrUpdateWallet = async (
     }
 
     if (!walletData.id) {
-      walletToSave.amount = 0;
-      walletToSave.totalIncome = 0;
-      walletToSave.totalExpenses = 0;
+      walletToSave.amount = Number(walletData.amount ?? 0);
+      walletToSave.totalIncome = Number(walletData.totalIncome ?? 0);
+      walletToSave.totalExpenses = Number(walletData.totalExpenses ?? 0);
       walletToSave.created = new Date();
     }
 
@@ -75,7 +75,7 @@ export const deleteTransactionByWalletId = async (
       );
 
       const transactionSnapshot = await getDocs(transactionQuery);
-      if (transactionSnapshot.size == 0) {
+      if (transactionSnapshot.size === 0) {
         hasMoreTransaction = false;
       }
 

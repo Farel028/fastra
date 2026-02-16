@@ -8,44 +8,75 @@ import Typo from "@/components/Typo";
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import { createOrUpdateWallet, deleteWallet } from "@/services/walletService";
-import { UserDataType, WalletType } from "@/types";
+import { WalletType } from "@/types";
+import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
 
+const first = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+type WalletForm = {
+  name: string;
+  image: any;
+  amount: number;
+};
+
 const WalletModal = () => {
-  const { user, updateUserData } = useAuth();
-  const [wallet, setWallet] = useState<UserDataType>({
+  const { user } = useAuth();
+  const [wallet, setWallet] = useState<WalletForm>({
     name: "",
     image: null,
+    amount: 0,
   });
+  const [amountStr, setAmountStr] = useState("0");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const oldWallet: { name: string; image: string; id: string } =
-    useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const oldWallet = {
+    id: first(params.id),
+    name: first(params.name),
+    image: first(params.image),
+    amount: Number(first(params.amount) ?? 0),
+  };
 
   useEffect(() => {
     if (oldWallet?.id) {
       setWallet({
-        name: oldWallet?.name,
-        image: oldWallet?.image,
+        name: oldWallet?.name ?? "",
+        image: oldWallet?.image ?? null,
+        amount: Number(oldWallet?.amount ?? 0),
       });
+      setAmountStr(String(Number(oldWallet?.amount ?? 0)));
     }
-  }, []);
+  }, [oldWallet?.amount, oldWallet?.id, oldWallet?.image, oldWallet?.name]);
+
+  const setAmountFromStr = (raw: string) => {
+    const clean = raw.replace(/[^0-9]/g, "");
+    const normalized = clean.length ? String(Number(clean)) : "0";
+    setAmountStr(normalized);
+    setWallet((prev) => ({ ...prev, amount: Number(normalized) }));
+  };
 
   const onSubmit = async () => {
-    let { name, image } = wallet;
+    let { name, image, amount } = wallet;
     if (!name.trim() || !image) {
       Alert.alert("Wallet", "Please fill all the fields");
+      return;
+    }
+    if (amount < 0) {
+      Alert.alert("Wallet", "Balance cannot be negative");
       return;
     }
 
     const data: WalletType = {
       name,
       image,
+      amount: Number(amount),
       uid: user?.uid,
     };
     if (oldWallet?.id) data.id = oldWallet?.id;
@@ -102,6 +133,18 @@ const WalletModal = () => {
               value={wallet.name}
               onChangeText={(value) => setWallet({ ...wallet, name: value })}
             />
+          </View>
+          <View style={styles.inputContainer}>
+            <Typo color={colors.neutral200}>Current Balance</Typo>
+            <Input
+              placeholder="0"
+              value={amountStr}
+              keyboardType="numeric"
+              onChangeText={setAmountFromStr}
+            />
+            <Typo size={13} color={colors.neutral400}>
+              {formatRupiah(Number(amountStr))}
+            </Typo>
           </View>
           <View style={styles.inputContainer}>
             <Typo color={colors.neutral200}>Wallet Icon</Typo>

@@ -2,7 +2,7 @@ import BackButton from "@/components/BackButton";
 import Header from "@/components/Header";
 import ScreenWrapper from "@/components/ScreenWrapper";
 import Typo from "@/components/Typo";
-import { incomeCategory } from "@/constants/data";
+import { debtCategory, incomeCategory, transferCategory } from "@/constants/data";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import { useCategories } from "@/contexts/categoryContext";
@@ -29,6 +29,15 @@ type DebtDoc = {
   amount: number;
   paidAmount: number;
   status?: DebtStatus;
+};
+
+type TransactionMetaDoc = {
+  id?: string;
+  uid?: string;
+  isTransfer?: boolean;
+  transferId?: string;
+  transferFromId?: string;
+  transferToId?: string;
 };
 
 const first = (v: string | string[] | undefined) =>
@@ -73,6 +82,26 @@ export default function TransactionDetail() {
     return isNaN(d.getTime()) ? new Date() : d;
   }, [dateISO]);
 
+  // ---- TRANSACTION META FETCH (guarded) ----
+  const transactionConstraints = useMemo(() => {
+    if (!id) return [];
+    return [where(documentId(), "==", id)];
+  }, [id]);
+
+  const { data: transactionRaw } = useFetchData<TransactionMetaDoc>(
+    id ? "transactions" : "",
+    transactionConstraints,
+  );
+
+  const transactionMeta = useMemo(() => {
+    const row = transactionRaw?.[0];
+    if (!row) return undefined;
+    if (user?.uid && row.uid && row.uid !== user.uid) return undefined;
+    return row;
+  }, [transactionRaw, user?.uid]);
+
+  const isTransferTransaction = Boolean(transactionMeta?.isTransfer);
+
   // ---- WALLET FETCH (guarded) ----
   const walletConstraints = useMemo(() => {
     if (!user?.uid) return [];
@@ -94,6 +123,27 @@ export default function TransactionDetail() {
     const w = wallets.find((x) => getWalletId(x) === String(walletId));
     return w?.name ?? "Wallet";
   }, [wallets, walletId]);
+
+  const transferFromText = useMemo(() => {
+    const transferFromId = String(transactionMeta?.transferFromId ?? "");
+    if (!transferFromId) return "from";
+
+    const fromWallet = wallets.find((x) => getWalletId(x) === transferFromId);
+    return fromWallet?.name ?? "from";
+  }, [transactionMeta?.transferFromId, wallets]);
+
+  const transferToText = useMemo(() => {
+    const transferToId = String(transactionMeta?.transferToId ?? "");
+    if (!transferToId) return "to";
+
+    const toWallet = wallets.find((x) => getWalletId(x) === transferToId);
+    return toWallet?.name ?? "to";
+  }, [transactionMeta?.transferToId, wallets]);
+
+  const transferRouteText = useMemo(() => {
+    if (!isTransferTransaction) return "";
+    return `Transfer ${transferFromText} -> ${transferToText}`;
+  }, [isTransferTransaction, transferFromText, transferToText]);
 
   // ---- DEBT META + DEBT FETCH (guarded) ----
   const debtMeta = useMemo(() => parseDebtMeta(description), [description]);
@@ -118,9 +168,17 @@ export default function TransactionDetail() {
 
   // ---- CATEGORY ----
   const category = useMemo(() => {
+    if (isDebtTransaction) return debtCategory;
+    if (isTransferTransaction) return transferCategory;
     if (type === "income") return incomeCategory;
     return expenseCategories[categoryValue as any];
-  }, [type, categoryValue, expenseCategories]);
+  }, [
+    isDebtTransaction,
+    isTransferTransaction,
+    type,
+    categoryValue,
+    expenseCategories,
+  ]);
 
   // ---- TEXTS ----
   const dateText = dateObj.toLocaleDateString("id-ID", {
@@ -150,15 +208,15 @@ export default function TransactionDetail() {
     return "Create Debt";
   }, [debt?.kind, debtMeta]);
 
-  const titleText =
-    debtActionText ||
-    category?.label ||
-    (type === "income" ? "Income" : "Expense");
+  const defaultTypeText = isTransferTransaction
+    ? "Transfer"
+    : type === "income"
+      ? "Income"
+      : "Expense";
 
-  const categoryText =
-    debtActionText ||
-    category?.label ||
-    (type === "income" ? "Income" : "Expense");
+  const titleText = debtActionText || category?.label || defaultTypeText;
+
+  const categoryText = category?.label || defaultTypeText;
 
   const isIncome = type === "income";
   const amountColor = isIncome ? colors.primary : colors.rose;
@@ -178,9 +236,16 @@ export default function TransactionDetail() {
         : "-";
 
   const noteText = useMemo(() => {
+    if (isTransferTransaction) return transferRouteText;
     if (isDebtTransaction) return String(debt?.note ?? "").trim();
     return String(description ?? "").trim();
-  }, [debt?.note, description, isDebtTransaction]);
+  }, [
+    isTransferTransaction,
+    transferRouteText,
+    isDebtTransaction,
+    debt?.note,
+    description,
+  ]);
 
   // ---- ACTIONS ----
   const onOpenDebt = () => {
@@ -297,6 +362,8 @@ export default function TransactionDetail() {
             >
               {isDebtTransaction
                 ? "Debt Transaction"
+                : isTransferTransaction
+                  ? "Transfer"
                 : isIncome
                   ? "Income"
                   : "Expense"}
@@ -329,7 +396,13 @@ export default function TransactionDetail() {
               <>
                 <Divider />
                 <Row
-                  label={isDebtTransaction ? "Debt Note" : "Note"}
+                  label={
+                    isDebtTransaction
+                      ? "Debt Note"
+                      : isTransferTransaction
+                        ? "Transfer Note"
+                        : "Note"
+                  }
                   value={noteText}
                 />
               </>

@@ -282,7 +282,7 @@ export default function DebtDetail() {
             onPress={confirmDelete}
             disabled={loading || debtLoading}
           >
-            <Icons.Trash size={verticalScale(20)} color={colors.rose} weight="bold" />
+            <Icons.TrashIcon size={verticalScale(20)} color={colors.rose} weight="bold" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -292,7 +292,7 @@ export default function DebtDetail() {
             disabled={loading || debtLoading || remaining <= 0}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: scale(10) }}>
-              <Icons.PlusCircle size={verticalScale(20)} color={colors.black} weight="bold" />
+              <Icons.PlusCircleIcon size={verticalScale(20)} color={colors.black} weight="bold" />
               <Typo fontWeight={"900"} color={colors.black}>
                 Add Payment
               </Typo>
@@ -305,12 +305,7 @@ export default function DebtDetail() {
             onPress={onEdit}
             disabled={loading || debtLoading || !id}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: scale(10) }}>
-              <Icons.PencilSimpleLine size={verticalScale(20)} color={colors.neutral200} weight="bold" />
-              <Typo fontWeight={"900"} color={colors.neutral200}>
-                Edit
-              </Typo>
-            </View>
+            <Icons.PencilSimpleLineIcon size={verticalScale(20)} color={colors.neutral200} weight="bold" />
           </TouchableOpacity>
         </View>
       </View>
@@ -400,7 +395,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacingX._15,
   },
   btnDanger: {
-    width: verticalScale(70),
+    width: verticalScale(55),
     backgroundColor: "#2A1012",
     borderColor: "#3A1518",
   },
@@ -410,7 +405,7 @@ const styles = StyleSheet.create({
     borderColor: colors.neutral200,
   },
   btnEdit: {
-    flex: 1,
+    width: verticalScale(80),
     backgroundColor: colors.neutral900,
     borderColor: colors.neutral800,
   },
