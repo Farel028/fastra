@@ -85,6 +85,20 @@ export const incomeCategory: CategoryType = {
   bgColor: "#16a34a", // Dark
 };
 
+export const transferCategory: CategoryType = {
+  label: "Transfer",
+  value: "transfer",
+  icon: Icons.WalletIcon,
+  bgColor: "#0EA5E9",
+};
+
+export const debtCategory: CategoryType = {
+  label: "Debt",
+  value: "debt",
+  icon: Icons.ReceiptIcon,
+  bgColor: "#F59E0B",
+};
+
 export const transactionTypes = [
   { label: "Expense", value: "expense" },
   { label: "Income", value: "income" },

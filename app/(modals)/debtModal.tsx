@@ -321,20 +321,6 @@ const DebtModal = () => {
             />
           </View>
 
-          {/* Title */}
-          <View style={styles.inputBox}>
-            <Typo size={12} color={colors.neutral400}>
-              Title (optional)
-            </Typo>
-            <TextInput
-              value={title}
-              onChangeText={setTitle}
-              placeholder="Judul singkat"
-              placeholderTextColor={colors.neutral500}
-              style={styles.input}
-            />
-          </View>
-
           {/* Amount */}
           <View style={styles.amountCard}>
             <View style={styles.amountHeader}>
@@ -364,7 +350,7 @@ const DebtModal = () => {
               setWalletModalVisible(true);
             }}
           >
-            <Icons.Wallet
+            <Icons.WalletIcon
               size={verticalScale(18)}
               color={colors.neutral300}
               weight="bold"
@@ -372,7 +358,7 @@ const DebtModal = () => {
             <Typo numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
               {walletName}
             </Typo>
-            <Icons.CaretDown
+            <Icons.CaretDownIcon
               size={verticalScale(18)}
               color={colors.neutral300}
               weight="bold"
@@ -388,7 +374,7 @@ const DebtModal = () => {
                 setDateModalVisible(true);
               }}
             >
-              <Icons.Calendar
+              <Icons.CalendarIcon
                 size={verticalScale(18)}
                 color={colors.neutral300}
                 weight="bold"
@@ -418,7 +404,7 @@ const DebtModal = () => {
                     paddingVertical: scale(4),
                   }}
                 >
-                  <Icons.X
+                  <Icons.XIcon
                     size={verticalScale(16)}
                     color={colors.neutral300}
                     weight="bold"
@@ -436,7 +422,7 @@ const DebtModal = () => {
               setNoteModalVisible(true);
             }}
           >
-            <Icons.PencilSimpleLine
+            <Icons.PencilSimpleLineIcon
               size={verticalScale(18)}
               color={colors.neutral300}
               weight="bold"
