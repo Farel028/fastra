@@ -5,27 +5,35 @@ import WalletListItem from "@/components/WalletListItem";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
+import { filterVisibleWallets } from "@/services/walletService";
 import { WalletType } from "@/types";
 import { formatRupiah } from "@/utils/common";
 import { verticalScale } from "@/utils/styling";
 import { useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 
 const Wallet = () => {
   const router = useRouter();
   const { user } = useAuth();
 
-  const {
-    data: wallets,
-    error,
-    loading,
-  } = useFetchData<WalletType>("wallets", [
-    where("uid", "==", user?.uid),
-    orderBy("created", "desc"),
-  ]);
+  const walletConstraints = useMemo(
+    () => (user?.uid ? [where("uid", "==", user.uid), orderBy("created", "desc")] : []),
+    [user?.uid],
+  );
+
+  const { data: walletsRaw, loading } = useFetchData<WalletType>(
+    user?.uid ? "wallets" : "",
+    walletConstraints,
+  );
+
+  const wallets = useMemo(
+    () => filterVisibleWallets(walletsRaw ?? []),
+    [walletsRaw],
+  );
+
   const getTotalBalance = () =>
     wallets.reduce((total, item) => {
       total = total + (item.amount || 0);

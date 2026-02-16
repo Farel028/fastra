@@ -3,11 +3,15 @@ import Typo from "@/components/Typo";
 import { colors, radius, spacingY } from "@/constants/theme";
 import { verticalScale } from "@/utils/styling";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Animated,
   BackHandler,
+  Keyboard,
+  KeyboardEvent,
+  Modal,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   TouchableOpacity,
@@ -19,6 +23,9 @@ interface Props {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  keyboardAware?: boolean;
+  keyboardOffset?: number;
+  portal?: boolean;
 }
 
 export default function SheetModal({
@@ -26,15 +33,24 @@ export default function SheetModal({
   title,
   onClose,
   children,
+  keyboardAware = true,
+  keyboardOffset = 0,
+  portal = false,
 }: Props) {
   const translateY = useRef(new Animated.Value(500)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const keyboardY = useRef(new Animated.Value(0)).current;
+  const mergedTranslateY = useMemo(
+    () => Animated.add(translateY, keyboardY),
+    [translateY, keyboardY],
+  );
 
   // ---------------- OPEN / CLOSE ----------------
   useEffect(() => {
     if (visible) {
       translateY.setValue(500);
       opacity.setValue(0);
+      keyboardY.setValue(0);
 
       Animated.parallel([
         Animated.timing(opacity, {
@@ -52,10 +68,11 @@ export default function SheetModal({
     } else {
       opacity.setValue(0);
       translateY.setValue(500);
+      keyboardY.setValue(0);
     }
-  }, [visible]);
+  }, [keyboardY, opacity, translateY, visible]);
 
-  const closeSheet = () => {
+  const closeSheet = useCallback(() => {
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 0,
@@ -67,8 +84,13 @@ export default function SheetModal({
         duration: 160,
         useNativeDriver: true,
       }),
+      Animated.timing(keyboardY, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: true,
+      }),
     ]).start(() => onClose());
-  };
+  }, [keyboardY, onClose, opacity, translateY]);
 
   // ---------------- ANDROID BACK ----------------
   useEffect(() => {
@@ -79,18 +101,65 @@ export default function SheetModal({
       () => {
         closeSheet();
         return true; // penting supaya gak balik ke screen sebelumnya
-      }
+      },
     );
 
     return () => backHandler.remove();
-  }, [visible]);
+  }, [closeSheet, visible]);
+
+  // ---------------- KEYBOARD AWARE ----------------
+  useEffect(() => {
+    if (!visible || !keyboardAware) return;
+
+    const animateKeyboard = (toValue: number, duration = 220) => {
+      Animated.timing(keyboardY, {
+        toValue,
+        duration,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const onShow = (e: KeyboardEvent) => {
+      const kbHeight = Math.max(
+        0,
+        (e?.endCoordinates?.height ?? 0) - keyboardOffset,
+      );
+      const duration = Platform.OS === "ios" ? (e?.duration ?? 220) : 220;
+      animateKeyboard(-kbHeight, duration);
+    };
+
+    const onHide = (e: KeyboardEvent) => {
+      const duration = Platform.OS === "ios" ? (e?.duration ?? 200) : 200;
+      animateKeyboard(0, duration);
+    };
+
+    const showEvt =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvt, onShow);
+    const hideSub = Keyboard.addListener(hideEvt, onHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      keyboardY.setValue(0);
+    };
+  }, [keyboardAware, keyboardOffset, keyboardY, visible]);
 
   // ---------------- SWIPE ANYWHERE ----------------
+  const shouldStartSwipe = (_: any, gesture: any) => {
+    const dy = Number(gesture?.dy ?? 0);
+    const dx = Number(gesture?.dx ?? 0);
+    return dy > 6 && Math.abs(dy) > Math.abs(dx);
+  };
+
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => {
-        return Math.abs(gesture.dy) > 5;
-      },
+      onMoveShouldSetPanResponder: shouldStartSwipe,
+      onMoveShouldSetPanResponderCapture: shouldStartSwipe,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_, gesture) => {
         if (gesture.dy > 0) {
           translateY.setValue(gesture.dy);
@@ -115,7 +184,7 @@ export default function SheetModal({
 
   if (!visible) return null;
 
-  return (
+  const content = (
     <View style={StyleSheet.absoluteFill}>
       {/* Overlay */}
       <Animated.View style={[styles.overlay, { opacity }]}>
@@ -125,7 +194,7 @@ export default function SheetModal({
       {/* Sheet */}
       <Animated.View
         {...panResponder.panHandlers}
-        style={[styles.sheet, { transform: [{ translateY }] }]}
+        style={[styles.sheet, { transform: [{ translateY: mergedTranslateY }] }]}
       >
         {/* Grabber */}
         <View style={styles.grabberWrap}>
@@ -151,6 +220,22 @@ export default function SheetModal({
       </Animated.View>
     </View>
   );
+
+  if (portal) {
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeSheet}
+      >
+        {content}
+      </Modal>
+    );
+  }
+
+  return content;
 }
 
 const styles = StyleSheet.create({

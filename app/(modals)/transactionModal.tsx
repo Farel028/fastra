@@ -4,10 +4,11 @@ import ImageUpload from "@/components/ImageUpload";
 import ModalWrapper from "@/components/ModalWrapper";
 import SheetModal from "@/components/SheetModal";
 import Typo from "@/components/Typo";
-import { expenseCategories } from "@/constants/data";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
+import { useCategories } from "@/contexts/categoryContext";
 import useFetchData from "@/hooks/useFetchData";
+import { filterVisibleWallets } from "@/services/walletService";
 import {
   createOrUpdateTransaction,
   createTransferTransaction,
@@ -59,6 +60,7 @@ const clampOneLine = (t?: string) => (t ?? "").replace(/\s+/g, " ").trim();
 
 const TransactionModal = () => {
   const { user } = useAuth();
+  const { categories: expenseCategories } = useCategories();
   const router = useRouter();
   useFocusEffect(
     useCallback(() => {
@@ -120,7 +122,7 @@ const TransactionModal = () => {
 
   const [activeOp, setActiveOp] = useState<string | null>(null);
 
-  const OPS = ["+", "-", "Ã—", "Ã·"] as const;
+  const OPS = ["+", "-", "×", "÷"] as const;
   const isOp = (c?: string) =>
     c ? (OPS as readonly string[]).includes(c) : false;
 
@@ -144,8 +146,8 @@ const TransactionModal = () => {
         const lastOpIndex = Math.max(
           p.lastIndexOf("+"),
           p.lastIndexOf("-"),
-          p.lastIndexOf("Ã—"),
-          p.lastIndexOf("Ã·"),
+          p.lastIndexOf("×"),
+          p.lastIndexOf("÷"),
         );
         const chunk = p.slice(lastOpIndex + 1);
         if (chunk.includes(".")) return p; // prevent double dot
@@ -197,7 +199,7 @@ const TransactionModal = () => {
   // aman: cuma izinin angka + operator dasar, terus eval versi "Function"
   const calcEvaluate = () => {
     try {
-      const safe = (calcExpr || "0").replace(/Ã—/g, "*").replace(/Ã·/g, "/");
+      const safe = (calcExpr || "0").replace(/×/g, "*").replace(/÷/g, "/");
 
       // validasi karakter
       if (!/^[0-9+\-*/.()]+$/.test(safe)) {
@@ -222,7 +224,7 @@ const TransactionModal = () => {
 
   const safeEvalToInt = (expr: string) => {
     try {
-      let safe = (expr || "0").replace(/Ã—/g, "*").replace(/Ã·/g, "/");
+      let safe = (expr || "0").replace(/×/g, "*").replace(/÷/g, "/");
 
       // buang operator/titik di ujung biar ga error pas preview
       while (/[+\-*/.]$/.test(safe)) safe = safe.slice(0, -1);
@@ -255,9 +257,19 @@ const TransactionModal = () => {
     setCalcModalVisible(false);
   };
 
-  const { data: wallets, loading: walletLoading } = useFetchData<WalletType>(
-    "wallets",
-    [where("uid", "==", user?.uid), orderBy("created", "desc")],
+  const walletConstraints = useMemo(
+    () => (user?.uid ? [where("uid", "==", user.uid), orderBy("created", "desc")] : []),
+    [user?.uid],
+  );
+
+  const { data: walletsRaw, loading: walletLoading } = useFetchData<WalletType>(
+    user?.uid ? "wallets" : "",
+    walletConstraints,
+  );
+
+  const wallets = useMemo(
+    () => filterVisibleWallets(walletsRaw ?? []),
+    [walletsRaw],
   );
 
   const getWalletId = (w: WalletType) =>
@@ -891,33 +903,33 @@ const TransactionModal = () => {
 
         <View style={styles.calcGrid}>
           {[
-            ["7", "8", "9", "Ã·"],
-            ["4", "5", "6", "Ã—"],
+            ["7", "8", "9", "÷"],
+            ["4", "5", "6", "×"],
             ["1", "2", "3", "-"],
-            [".", "0", "âŒ«", "+"],
+            [".", "0", "⌫", "+"],
             ["=", "Apply"],
           ].map((row, rIdx) => (
             <View key={rIdx} style={styles.calcRow}>
               {row.map((k) => {
-                // âŒ« tombol khusus biar long press jalan
-                if (k === "âŒ«") {
+                // ⌫ tombol khusus biar long press jalan
+                if (k === "⌫") {
                   return (
                     <TouchableOpacity
-                      key="âŒ«"
+                      key="⌫"
                       activeOpacity={0.88}
                       style={styles.calcKey}
                       onPress={calcBackspace}
                       onLongPress={calcClear}
                       delayLongPress={400}
                     >
-                      <Typo fontWeight={"900"}>âŒ«</Typo>
+                      <Typo fontWeight={"900"}>⌫</Typo>
                     </TouchableOpacity>
                   );
                 }
 
                 const isWide = k === "Apply";
                 const isEq = k === "=";
-                const isOperator = ["+", "-", "Ã—", "Ã·"].includes(k);
+                const isOperator = ["+", "-", "×", "÷"].includes(k);
                 const isActiveOp = activeOp === k;
 
                 return (
