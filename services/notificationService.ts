@@ -1,5 +1,4 @@
 import { firestore } from "@/config/firebase";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
@@ -15,8 +14,9 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const DAILY_REMINDER_IDS_KEY = "@entrack:dailyReminderNotificationIds:v1";
-const DAILY_REMINDER_NAME_KEY = "@entrack:dailyReminderNotificationName:v1";
+const MANAGED_REMINDER_PREFIX = "entrack:reminder:";
+const MANAGED_REMINDER_SOURCE = "entrack_auto_reminder_v2";
+const LEGACY_REMINDER_TYPES = new Set(["daily_reminder", "weekly_reminder"]);
 
 const WEEKDAY_DAYS = [2, 3, 4, 5, 6];
 const WEEKEND_DAYS = [1, 7];
@@ -109,6 +109,45 @@ const getFirstName = (fullName?: string | null): string | null => {
 
   const firstName = fullName.trim().split(/\s+/)[0];
   return firstName || null;
+};
+
+const getReminderTitle = (title: string, firstName: string | null): string => {
+  return firstName ? `Hey ${firstName}, ${title}` : title;
+};
+
+const buildReminderIdentifier = (reminder: PlannedReminder): string => {
+  const hh = reminder.hour.toString().padStart(2, "0");
+  const mm = reminder.minute.toString().padStart(2, "0");
+  return `${MANAGED_REMINDER_PREFIX}${reminder.dayType}:${reminder.weekday}:${hh}:${mm}`;
+};
+
+const isManagedReminder = (
+  request: Notifications.NotificationRequest,
+): boolean => {
+  const data = request.content.data as Record<string, unknown> | undefined;
+  const source = typeof data?.source === "string" ? data.source : null;
+  const legacyType = typeof data?.type === "string" ? data.type : null;
+
+  return (
+    request.identifier.startsWith(MANAGED_REMINDER_PREFIX) ||
+    source === MANAGED_REMINDER_SOURCE ||
+    (legacyType ? LEGACY_REMINDER_TYPES.has(legacyType) : false)
+  );
+};
+
+const getManagedScheduledReminders = async (): Promise<
+  Notifications.NotificationRequest[]
+> => {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  return scheduled.filter(isManagedReminder);
+};
+
+let reminderTaskQueue = Promise.resolve();
+
+const enqueueReminderTask = async (task: () => Promise<void>): Promise<void> => {
+  const currentTask = reminderTaskQueue.then(task, task);
+  reminderTaskQueue = currentTask.catch(() => undefined);
+  await currentTask;
 };
 
 const getProjectId = (): string => {
@@ -206,56 +245,49 @@ export const addNotificationListeners = (
   };
 };
 
-const getStoredDailyReminderIds = async (): Promise<string[]> => {
-  try {
-    const rawValue = await AsyncStorage.getItem(DAILY_REMINDER_IDS_KEY);
-    if (!rawValue) return [];
-
-    const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter((id) => typeof id === "string");
-  } catch {
-    return [];
-  }
-};
-
-export const cancelDailyReminderNotifications = async (): Promise<void> => {
+const cancelDailyReminderNotificationsInternal = async (): Promise<void> => {
   if (Platform.OS === "web") return;
 
-  const ids = await getStoredDailyReminderIds();
+  const managedReminders = await getManagedScheduledReminders();
   await Promise.all(
-    ids.map(async (id) => {
+    managedReminders.map(async (item) => {
       try {
-        await Notifications.cancelScheduledNotificationAsync(id);
+        await Notifications.cancelScheduledNotificationAsync(item.identifier);
       } catch (error) {
-        console.log("Failed to cancel notification: ", id, error);
+        console.log("Failed to cancel notification: ", item.identifier, error);
       }
     }),
   );
+};
 
-  await AsyncStorage.removeItem(DAILY_REMINDER_IDS_KEY);
-  await AsyncStorage.removeItem(DAILY_REMINDER_NAME_KEY);
+export const cancelDailyReminderNotifications = async (): Promise<void> => {
+  await enqueueReminderTask(cancelDailyReminderNotificationsInternal);
 };
 
 const hasAllDailyRemindersScheduled = async (
   firstName: string | null,
 ): Promise<boolean> => {
   const reminderPlan = buildWeeklyReminderPlan();
-  const ids = await getStoredDailyReminderIds();
-  if (ids.length !== reminderPlan.length) return false;
+  const managedReminders = await getManagedScheduledReminders();
+  if (managedReminders.length !== reminderPlan.length) return false;
 
-  const storedName = await AsyncStorage.getItem(DAILY_REMINDER_NAME_KEY);
-  const expectedName = firstName || "";
-  if ((storedName || "") !== expectedName) return false;
+  const reminderMap = new Map(
+    managedReminders.map((item) => [item.identifier, item]),
+  );
 
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const scheduledIds = new Set(scheduled.map((item) => item.identifier));
+  for (const reminder of reminderPlan) {
+    const expectedIdentifier = buildReminderIdentifier(reminder);
+    const existing = reminderMap.get(expectedIdentifier);
+    if (!existing) return false;
 
-  return ids.every((id) => scheduledIds.has(id));
+    const expectedTitle = getReminderTitle(reminder.title, firstName);
+    if (existing.content.title !== expectedTitle) return false;
+  }
+
+  return true;
 };
 
-export const scheduleDailyReminderNotifications = async (
+const scheduleDailyReminderNotificationsInternal = async (
   fullName?: string | null,
 ): Promise<void> => {
   if (Platform.OS === "web") return;
@@ -269,19 +301,19 @@ export const scheduleDailyReminderNotifications = async (
     return;
   }
 
-  await cancelDailyReminderNotifications();
+  await cancelDailyReminderNotificationsInternal();
 
   const reminderPlan = buildWeeklyReminderPlan();
-  const ids: string[] = [];
   for (const reminder of reminderPlan) {
-    const notificationId = await Notifications.scheduleNotificationAsync({
+    const identifier = buildReminderIdentifier(reminder);
+    await Notifications.scheduleNotificationAsync({
+      identifier,
       content: {
-        title: firstName
-          ? `Hey ${firstName}, ${reminder.title}`
-          : reminder.title,
+        title: getReminderTitle(reminder.title, firstName),
         body: reminder.body,
         sound: "default",
         data: {
+          source: MANAGED_REMINDER_SOURCE,
           type: "weekly_reminder",
           dayType: reminder.dayType,
           weekday: reminder.weekday,
@@ -298,10 +330,13 @@ export const scheduleDailyReminderNotifications = async (
         channelId: "default",
       },
     });
-
-    ids.push(notificationId);
   }
+};
 
-  await AsyncStorage.setItem(DAILY_REMINDER_IDS_KEY, JSON.stringify(ids));
-  await AsyncStorage.setItem(DAILY_REMINDER_NAME_KEY, firstName || "");
+export const scheduleDailyReminderNotifications = async (
+  fullName?: string | null,
+): Promise<void> => {
+  await enqueueReminderTask(() =>
+    scheduleDailyReminderNotificationsInternal(fullName),
+  );
 };
