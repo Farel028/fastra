@@ -1,4 +1,5 @@
 import BackButton from "@/components/BackButton";
+import DateTimeSheetPicker from "@/components/DateTimeSheetPicker";
 import Header from "@/components/Header";
 import ModalWrapper from "@/components/ModalWrapper";
 import SheetModal from "@/components/SheetModal";
@@ -10,7 +11,6 @@ import { createDebt, updateDebt } from "@/services/debtService";
 import { WalletType } from "@/types";
 import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
@@ -19,7 +19,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   BackHandler,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -210,13 +209,12 @@ const DebtModal = () => {
     const d = date.toLocaleDateString("id-ID", {
       day: "2-digit",
       month: "short",
-      year: "numeric",
     });
     const t = date.toLocaleTimeString("id-ID", {
       hour: "2-digit",
       minute: "2-digit",
     });
-    return `${day}, ${d}\n${t}`;
+    return `${day}, ${d} ${t}`;
   }, [date]);
 
   const dueLabel = useMemo(() => {
@@ -228,32 +226,6 @@ const DebtModal = () => {
     });
     return d;
   }, [dueDate]);
-
-  const onDateChange = (
-    event: any,
-    selectedDate: any,
-    target: "date" | "due",
-  ) => {
-    if (Platform.OS === "android") {
-      if (event?.type === "dismissed") {
-        if (target === "date") setDateModalVisible(false);
-        else setDueModalVisible(false);
-        return;
-      }
-      const d =
-        selectedDate || (target === "date" ? date : dueDate || new Date());
-      if (target === "date") setDate(d);
-      else setDueDate(d);
-      if (target === "date") setDateModalVisible(false);
-      else setDueModalVisible(false);
-      return;
-    }
-
-    const d =
-      selectedDate || (target === "date" ? date : dueDate || new Date());
-    if (target === "date") setDate(d);
-    else setDueDate(d);
-  };
 
   return (
     <ModalWrapper onClose={() => router.back()} swipeEnabled={!anySheetOpen}>
@@ -388,7 +360,7 @@ const DebtModal = () => {
               style={[styles.pickerInput, { flex: 1 }]}
               onPress={() => setDueModalVisible(true)}
             >
-              <Icons.Clock
+              <Icons.ClockIcon
                 size={verticalScale(18)}
                 color={colors.neutral300}
                 weight="bold"
@@ -466,7 +438,6 @@ const DebtModal = () => {
             }}
             onSubmit={onSubmit}
             submitDisabled={submitDisabled}
-            submitLabel={isEdit ? "Update" : "Save"}
           />
         </View>
       </View>
@@ -497,7 +468,7 @@ const DebtModal = () => {
                 </Typo>
               </View>
 
-              <Icons.CaretRight
+              <Icons.CaretRightIcon
                 size={verticalScale(18)}
                 color={colors.neutral300}
                 weight="bold"
@@ -557,61 +528,25 @@ const DebtModal = () => {
         </View>
       </SheetModal>
 
-      {/* Date sheet */}
-      <SheetModal
+      <DateTimeSheetPicker
         visible={dateModalVisible}
-        title="Select Date"
+        title="Select Date & Time"
+        value={date}
+        withTime
         onClose={() => setDateModalVisible(false)}
-      >
-        <View style={{ paddingBottom: spacingY._10 }}>
-          <DateTimePicker
-            themeVariant="dark"
-            value={date}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(e, d) => onDateChange(e, d, "date")}
-          />
-        </View>
+        onConfirm={(next) => setDate(next)}
+      />
 
-        {Platform.OS === "ios" && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-            onPress={() => setDateModalVisible(false)}
-          >
-            <Typo fontWeight={"900"} color={colors.black}>
-              OK
-            </Typo>
-          </TouchableOpacity>
-        )}
-      </SheetModal>
-
-      {/* Due sheet */}
-      <SheetModal
+      <DateTimeSheetPicker
         visible={dueModalVisible}
         title="Due Date"
+        value={dueDate ?? new Date()}
+        withTime={false}
+        showClear={!!dueDate}
+        onClear={() => setDueDate(null)}
         onClose={() => setDueModalVisible(false)}
-      >
-        <View style={{ paddingBottom: spacingY._10 }}>
-          <DateTimePicker
-            themeVariant="dark"
-            value={dueDate ?? new Date()}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(e, d) => onDateChange(e, d, "due")}
-          />
-        </View>
-
-        {Platform.OS === "ios" && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-            onPress={() => setDueModalVisible(false)}
-          >
-            <Typo fontWeight={"900"} color={colors.black}>
-              OK
-            </Typo>
-          </TouchableOpacity>
-        )}
-      </SheetModal>
+        onConfirm={(next) => setDueDate(next)}
+      />
     </ModalWrapper>
   );
 };
@@ -625,7 +560,6 @@ const OlloNumpad = ({
   onClear,
   onSubmit,
   submitDisabled,
-  submitLabel,
 }: {
   value: string;
   onKey: (k: string) => void;
@@ -633,7 +567,6 @@ const OlloNumpad = ({
   onClear: () => void;
   onSubmit: () => void;
   submitDisabled: boolean;
-  submitLabel: string;
 }) => {
   const rows = [
     ["1", "2", "3"],
@@ -672,7 +605,7 @@ const OlloNumpad = ({
               onLongPress={onClear}
               delayLongPress={350}
             >
-              <Icons.Backspace
+              <Icons.BackspaceIcon
                 size={verticalScale(18)}
                 color={colors.rose}
                 weight="bold"
@@ -682,7 +615,7 @@ const OlloNumpad = ({
 
           {idx === 1 && (
             <View style={[styles.padKey, styles.padTool]}>
-              <Icons.HandCoins
+              <Icons.HandCoinsIcon
                 size={verticalScale(18)}
                 color={colors.neutral300}
                 weight="bold"
@@ -692,7 +625,7 @@ const OlloNumpad = ({
 
           {idx === 2 && (
             <View style={[styles.padKey, styles.padTool]}>
-              <Icons.Wallet
+              <Icons.WalletIcon
                 size={verticalScale(18)}
                 color={colors.neutral300}
                 weight="bold"
@@ -712,14 +645,11 @@ const OlloNumpad = ({
               disabled={submitDisabled}
             >
               <View style={{ alignItems: "center" }}>
-                <Icons.Check
+                <Icons.CheckIcon
                   size={verticalScale(22)}
                   color={colors.black}
                   weight="bold"
                 />
-                <Typo size={11} fontWeight={"900"} color={colors.black}>
-                  {submitLabel}
-                </Typo>
               </View>
             </TouchableOpacity>
           )}

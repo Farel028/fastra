@@ -70,12 +70,14 @@ const HomeCard = () => {
 
   const isDebtTransaction = (description?: string) =>
     /^\[(DEBT|PAYMENT):[^\]]+\]/i.test(String(description ?? "").trim());
+  const isTransferTransaction = (item: any) => Boolean(item?.isTransfer);
 
   const totals = useMemo(
     () =>
       (monthlyTransactions ?? []).reduce(
         (acc, item: any) => {
           if (isDebtTransaction(item?.description)) return acc;
+          if (isTransferTransaction(item)) return acc;
 
           const amount = toSafeNumber(item?.amount);
           const type = String(item?.type ?? "").toLowerCase();
@@ -94,7 +96,8 @@ const HomeCard = () => {
   const nonDebtTransactionsCount = useMemo(
     () =>
       (monthlyTransactions ?? []).filter(
-        (item: any) => !isDebtTransaction(item?.description),
+        (item: any) =>
+          !isDebtTransaction(item?.description) && !isTransferTransaction(item),
       ).length,
     [monthlyTransactions],
   );

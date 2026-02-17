@@ -1,4 +1,5 @@
 import BackButton from "@/components/BackButton";
+import DateTimeSheetPicker from "@/components/DateTimeSheetPicker";
 import Header from "@/components/Header";
 import ModalWrapper from "@/components/ModalWrapper";
 import SheetModal from "@/components/SheetModal";
@@ -11,7 +12,6 @@ import { ensureSystemWallets } from "@/services/walletService";
 import { WalletType } from "@/types";
 import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
@@ -20,7 +20,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   BackHandler,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -114,26 +113,10 @@ const DebtPaymentModal = () => {
     const d = date.toLocaleDateString("id-ID", {
       day: "2-digit",
       month: "short",
-      year: "numeric",
     });
     const t = date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-    return `${day}, ${d}\n${t}`;
+    return `${day}, ${d} ${t}`;
   }, [date]);
-
-  const onDateChange = (event: any, selectedDate: any) => {
-    if (Platform.OS === "android") {
-      if (event?.type === "dismissed") {
-        setDateModalVisible(false);
-        return;
-      }
-      const d = selectedDate || date;
-      setDate(d);
-      setDateModalVisible(false);
-      return;
-    }
-    const d = selectedDate || date;
-    setDate(d);
-  };
 
   const anySheetOpen = walletModalVisible || dateModalVisible || noteModalVisible;
 
@@ -201,16 +184,16 @@ const DebtPaymentModal = () => {
 
           {/* Wallet */}
           <Pressable style={styles.pickerInput} onPress={() => setWalletModalVisible(true)}>
-            <Icons.Wallet size={verticalScale(18)} color={colors.neutral300} weight="bold" />
+            <Icons.WalletIcon size={verticalScale(18)} color={colors.neutral300} weight="bold" />
             <Typo numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
               {walletLabel}: {walletName}
             </Typo>
-            <Icons.CaretDown size={verticalScale(18)} color={colors.neutral300} weight="bold" />
+            <Icons.CaretDownIcon size={verticalScale(18)} color={colors.neutral300} weight="bold" />
           </Pressable>
 
           {/* Date */}
           <Pressable style={styles.pickerInput} onPress={() => setDateModalVisible(true)}>
-            <Icons.Calendar size={verticalScale(18)} color={colors.neutral300} weight="bold" />
+            <Icons.CalendarIcon size={verticalScale(18)} color={colors.neutral300} weight="bold" />
             <Typo style={{ flex: 1 }} numberOfLines={2}>
               {dateLabel}
             </Typo>
@@ -224,7 +207,7 @@ const DebtPaymentModal = () => {
               setNoteModalVisible(true);
             }}
           >
-            <Icons.PencilSimpleLine size={verticalScale(18)} color={colors.neutral300} weight="bold" />
+            <Icons.PencilSimpleLineIcon size={verticalScale(18)} color={colors.neutral300} weight="bold" />
             <Typo
               style={{ flex: 1 }}
               color={note?.trim() ? colors.white : colors.neutral400}
@@ -258,7 +241,6 @@ const DebtPaymentModal = () => {
             onClear={() => setAmountFromStr("0")}
             onSubmit={onSubmit}
             submitDisabled={submitDisabled}
-            submitLabel="Save"
           />
         </View>
       </View>
@@ -285,7 +267,7 @@ const DebtPaymentModal = () => {
                 </Typo>
               </View>
 
-              <Icons.CaretRight size={verticalScale(18)} color={colors.neutral300} weight="bold" />
+              <Icons.CaretRightIcon size={verticalScale(18)} color={colors.neutral300} weight="bold" />
             </TouchableOpacity>
           ))}
 
@@ -335,29 +317,14 @@ const DebtPaymentModal = () => {
         </View>
       </SheetModal>
 
-      {/* Date sheet */}
-      <SheetModal visible={dateModalVisible} title="Select Date" onClose={() => setDateModalVisible(false)}>
-        <View style={{ paddingBottom: spacingY._10 }}>
-          <DateTimePicker
-            themeVariant="dark"
-            value={date}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={onDateChange}
-          />
-        </View>
-
-        {Platform.OS === "ios" && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-            onPress={() => setDateModalVisible(false)}
-          >
-            <Typo fontWeight={"900"} color={colors.black}>
-              OK
-            </Typo>
-          </TouchableOpacity>
-        )}
-      </SheetModal>
+      <DateTimeSheetPicker
+        visible={dateModalVisible}
+        title="Select Date & Time"
+        value={date}
+        withTime
+        onClose={() => setDateModalVisible(false)}
+        onConfirm={(next) => setDate(next)}
+      />
     </ModalWrapper>
   );
 };
@@ -371,7 +338,6 @@ const OlloNumpad = ({
   onClear,
   onSubmit,
   submitDisabled,
-  submitLabel,
 }: {
   value: string;
   onKey: (k: string) => void;
@@ -379,7 +345,6 @@ const OlloNumpad = ({
   onClear: () => void;
   onSubmit: () => void;
   submitDisabled: boolean;
-  submitLabel: string;
 }) => {
   const rows = [
     ["1", "2", "3"],
@@ -416,7 +381,7 @@ const OlloNumpad = ({
               onLongPress={onClear}
               delayLongPress={350}
             >
-              <Icons.Backspace size={verticalScale(18)} color={colors.rose} weight="bold" />
+              <Icons.BackspaceIcon size={verticalScale(18)} color={colors.rose} weight="bold" />
             </TouchableOpacity>
           )}
 
@@ -431,10 +396,7 @@ const OlloNumpad = ({
               disabled={submitDisabled}
             >
               <View style={{ alignItems: "center" }}>
-                <Icons.Check size={verticalScale(22)} color={colors.black} weight="bold" />
-                <Typo size={11} fontWeight={"900"} color={colors.black}>
-                  {submitLabel}
-                </Typo>
+                <Icons.CheckIcon size={verticalScale(22)} color={colors.black} weight="bold" />
               </View>
             </TouchableOpacity>
           )}

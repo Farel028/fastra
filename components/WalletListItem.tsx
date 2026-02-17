@@ -19,13 +19,16 @@ const WalletListItem = ({
   index: number;
   router: Router;
 }) => {
+  const encodedImageParam =
+    typeof item?.image === "string" ? encodeURIComponent(item.image) : "";
+
   const openWallet = () => {
     router.push({
       pathname: "/(modals)/walletModal",
       params: {
         id: item?.id,
         name: item?.name,
-        image: item?.image,
+        image: encodedImageParam,
         amount: String(item?.amount ?? 0),
       },
     });
@@ -69,7 +72,7 @@ const styles = StyleSheet.create({
   imageContainer: {
     height: verticalScale(45),
     width: verticalScale(45),
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: colors.neutral600,
     borderRadius: radius._12,
     borderCurve: "continuous",

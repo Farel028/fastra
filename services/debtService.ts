@@ -33,6 +33,7 @@ export type DebtDoc = {
   paidAmount: number;
   status: DebtStatus;
   walletId: string;
+  date?: Date | null;
   dueDate?: Date | null;
   created: any;
   updated: any;
@@ -126,6 +127,7 @@ export const createDebt = async (args: {
       paidAmount: 0,
       status: "ONGOING",
       walletId,
+      date,
       dueDate: dueDate ?? null,
       created: serverTimestamp(),
       updated: serverTimestamp(),
