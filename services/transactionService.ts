@@ -218,7 +218,7 @@ const revertAndUpdateWallet = async (
 
 export const deleteTransaction = async (
   transactionId: string,
-  walletId: string,
+  walletId?: string,
 ) => {
   try {
     const transactionRef = doc(firestore, "transactions", transactionId);
@@ -227,28 +227,54 @@ export const deleteTransaction = async (
     if (!transactionSnapshot.exists()) {
       return { success: false, msg: "Transaction not found" };
     }
-    const transactionData = transactionSnapshot.data() as TransactionType;
+    const transactionData = transactionSnapshot.data() as TransactionType & {
+      isTransfer?: boolean;
+      transferId?: string;
+    };
 
-    const transactionType = transactionData?.type;
-    const transactionAmount = transactionData?.amount;
+    if (transactionData?.isTransfer) {
+      const transferId = String(transactionData?.transferId ?? "").trim();
+      if (!transferId) {
+        return {
+          success: false,
+          msg: "Transfer data tidak lengkap. Gagal menghapus transfer.",
+        };
+      }
+      return await deleteTransferTransactions(transferId);
+    }
 
-    const walletSnapshot = await getDoc(doc(firestore, "wallets", walletId));
+    const transactionType = String(transactionData?.type ?? "");
+    const transactionAmount = Number(transactionData?.amount ?? 0);
+    if (!transactionType || !transactionAmount || transactionAmount <= 0) {
+      return { success: false, msg: "Transaction data invalid" };
+    }
+
+    const effectiveWalletId = String(transactionData?.walletId ?? walletId ?? "");
+    if (!effectiveWalletId) {
+      return { success: false, msg: "Wallet tidak ditemukan pada transaksi" };
+    }
+
+    const walletSnapshot = await getDoc(doc(firestore, "wallets", effectiveWalletId));
+    if (!walletSnapshot.exists()) {
+      return { success: false, msg: "Wallet not found" };
+    }
     const walletData = walletSnapshot.data() as WalletType;
 
     const updateType =
       transactionType == "income" ? "totalIncome" : "totalExpenses";
     const newWalletAmount =
-      walletData?.amount! -
+      Number(walletData?.amount ?? 0) -
       (transactionType == "income" ? transactionAmount : -transactionAmount);
 
-    const newIncomeExpenseAmount = walletData[updateType]! - transactionAmount;
+    const newIncomeExpenseAmount =
+      Number(walletData?.[updateType] ?? 0) - transactionAmount;
 
     if (transactionType == "expense" && newWalletAmount < 0) {
       return { success: false, msg: "You cannot delete this transaction" };
     }
 
     await createOrUpdateWallet({
-      id: walletId,
+      id: effectiveWalletId,
       amount: newWalletAmount,
       [updateType]: newIncomeExpenseAmount,
     });
@@ -259,6 +285,9 @@ export const deleteTransaction = async (
     return { success: false, msg: err.message };
   }
 };
+
+const isTransferTransaction = (transaction: any) =>
+  Boolean(transaction?.isTransfer);
 
 export const fetchWeeklyStats = async (uid: string): Promise<ResponseType> => {
   try {
@@ -283,6 +312,8 @@ export const fetchWeeklyStats = async (uid: string): Promise<ResponseType> => {
       const transaction = doc.data() as TransactionType;
       transaction.id = doc.id;
       transactions.push(transaction);
+
+      if (isTransferTransaction(transaction)) return;
 
       const transactionDate = (transaction.date as Timestamp)
         .toDate()
@@ -347,6 +378,8 @@ export const fetchMonthlyStats = async (uid: string): Promise<ResponseType> => {
       transaction.id = doc.id;
       transactions.push(transaction);
 
+      if (isTransferTransaction(transaction)) return;
+
       const transactionDate = (transaction.date as Timestamp).toDate();
       const MonthName = transactionDate.toLocaleString("default", {
         month: "short",
@@ -402,7 +435,9 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
     const transactions: TransactionType[] = [];
 
     const firstTransactions = querySnapshot.docs.reduce((earliest, doc) => {
-      const transactionDate = doc.data().date.toDate();
+      const row = doc.data() as any;
+      if (isTransferTransaction(row)) return earliest;
+      const transactionDate = row.date.toDate();
       return transactionDate < earliest ? transactionDate : earliest;
     }, new Date());
 
@@ -415,6 +450,8 @@ export const fetchYearlyStats = async (uid: string): Promise<ResponseType> => {
       const transaction = doc.data() as TransactionType;
       transaction.id = doc.id;
       transactions.push(transaction);
+
+      if (isTransferTransaction(transaction)) return;
 
       const transactionYear = (transaction.date as Timestamp)
         .toDate()

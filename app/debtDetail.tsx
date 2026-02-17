@@ -30,6 +30,7 @@ type DebtDoc = {
   paidAmount: number;
   status?: DebtStatus;
   walletId: string;
+  date?: any;
   dueDate?: any;
   created?: any;
 };
@@ -66,6 +67,7 @@ export default function DebtDetail() {
   const fallbackAmount = Number(first(params.amount) ?? 0);
   const fallbackPaidAmount = Number(first(params.paidAmount) ?? 0);
   const fallbackWalletId = first(params.walletId) ?? "";
+  const dateISO = first(params.date);
   const dueISO = first(params.dueDate);
   const createdISO = first(params.created);
 
@@ -109,11 +111,17 @@ export default function DebtDetail() {
   const walletId = String(debt?.walletId ?? fallbackWalletId);
   const remaining = Math.max(0, amount - paidAmount);
   const isPiutang = kind === "PIUTANG";
+  const debtDateValue = (debt as any)?.date;
+  const debtCreatedValue = debt?.created;
 
   const dueObj = useMemo(() => toDate(debt?.dueDate) ?? toDate(dueISO), [debt?.dueDate, dueISO]);
-  const createdObj = useMemo(
-    () => toDate(debt?.created) ?? toDate(createdISO),
-    [createdISO, debt?.created],
+  const dateObj = useMemo(
+    () =>
+      toDate(debtDateValue) ??
+      toDate(dateISO) ??
+      toDate(debtCreatedValue) ??
+      toDate(createdISO),
+    [createdISO, dateISO, debtCreatedValue, debtDateValue],
   );
 
   const walletText = useMemo(() => {
@@ -125,8 +133,8 @@ export default function DebtDetail() {
     ? dueObj.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })
     : "-";
 
-  const createdText = createdObj
-    ? createdObj.toLocaleDateString("id-ID", {
+  const dateText = dateObj
+    ? dateObj.toLocaleDateString("id-ID", {
         day: "2-digit",
         month: "long",
         year: "numeric",
@@ -162,7 +170,7 @@ export default function DebtDetail() {
         amount: String(amount),
         paidAmount: String(paidAmount),
         walletId,
-        date: createdObj ? createdObj.toISOString() : "",
+        date: dateObj ? dateObj.toISOString() : "",
         dueDate: dueObj ? dueObj.toISOString() : "",
       },
     });
@@ -264,7 +272,7 @@ export default function DebtDetail() {
             <Row label="Due Date" value={dueText} />
             <Divider />
 
-            <Row label="Created" value={createdText} />
+            <Row label="Date" value={dateText} />
 
             {!!note?.trim() && (
               <>

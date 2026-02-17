@@ -299,13 +299,13 @@ export default function TransactionDetail() {
       return;
     }
 
-    if (!id || !walletId) {
-      Alert.alert("Error", "id / walletId tidak ditemukan.");
+    if (!id) {
+      Alert.alert("Error", "id transaksi tidak ditemukan.");
       return;
     }
 
     setLoading(true);
-    const res = await deleteTransaction(id, walletId);
+    const res = await deleteTransaction(id);
     setLoading(false);
 
     if (res.success) router.back();

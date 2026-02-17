@@ -42,6 +42,7 @@ type DebtDoc = {
   status: DebtStatus;
 
   walletId: string;
+  date?: any; // Date | Timestamp
   dueDate?: any; // Date | null | Timestamp
   created?: any;
   updated?: any;
@@ -167,8 +168,12 @@ export default function Debts() {
       const remaining = Math.max(0, amount - paid);
 
       const due = toDate(d.dueDate);
+      const dueMs = due?.getTime();
       const overdue =
-        d.status !== "PAID" && remaining > 0 && !!due && due.getTime() < now;
+        d.status !== "PAID" &&
+        remaining > 0 &&
+        typeof dueMs === "number" &&
+        dueMs < now;
 
       if (filter === "PAID") return d.status === "PAID" || remaining <= 0;
       if (filter === "OVERDUE") return overdue;
@@ -365,11 +370,12 @@ function DebtCard({
   const remaining = Math.max(0, amount - paid);
 
   const due = toDate(debt.dueDate);
+  const dueMs = due?.getTime();
   const overdue =
     debt.status !== "PAID" &&
     remaining > 0 &&
-    !!due &&
-    due.getTime() < Date.now();
+    typeof dueMs === "number" &&
+    dueMs < Date.now();
 
   const badgeText =
     remaining <= 0 || debt.status === "PAID"

@@ -187,6 +187,7 @@ export type DebtType = {
   personName: string;
   amount: number;
   paidAmount: number;
+  date?: Date | null;
   dueDate?: Date | null;
   walletId: string;
   note?: string;

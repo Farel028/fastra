@@ -1,4 +1,5 @@
 import BackButton from "@/components/BackButton";
+import DateTimeSheetPicker from "@/components/DateTimeSheetPicker";
 import Header from "@/components/Header";
 import ImageUpload from "@/components/ImageUpload";
 import ModalWrapper from "@/components/ModalWrapper";
@@ -17,7 +18,6 @@ import {
 import { TransactionType, WalletType } from "@/types";
 import { formatRupiah } from "@/utils/common";
 import { scale, verticalScale } from "@/utils/styling";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
@@ -26,7 +26,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   BackHandler,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -478,10 +477,7 @@ const TransactionModal = () => {
   const onDelete = async () => {
     if (!oldTransaction?.id) return;
     setLoading(true);
-    const res = await deleteTransaction(
-      oldTransaction?.id,
-      oldTransaction.walletId ?? "",
-    );
+    const res = await deleteTransaction(oldTransaction?.id);
     setLoading(false);
     if (res.success) router.back();
     else Alert.alert("Transaction", res.msg);
@@ -508,21 +504,6 @@ const TransactionModal = () => {
     setWalletModalVisible(false);
   };
 
-  const onDateChange = (event: any, selectedDate: any) => {
-    if (Platform.OS === "android") {
-      if (event?.type === "dismissed") {
-        setDateModalVisible(false);
-        return;
-      }
-      const d = selectedDate || transaction.date;
-      setTransaction((p) => ({ ...p, date: d }));
-      setDateModalVisible(false);
-      return;
-    }
-    const d = selectedDate || transaction.date;
-    setTransaction((p) => ({ ...p, date: d }));
-  };
-
   const handleTypeChange = (value: string) => {
     setTransaction((p) => ({
       ...p,
@@ -541,17 +522,15 @@ const TransactionModal = () => {
   // âœ… label tanggal untuk tombol date (di atas submit)
   const dateLabel = useMemo(() => {
     const d = transaction.date as Date;
-    const day = d.toLocaleDateString("id-ID", { weekday: "short" });
     const date = d.toLocaleDateString("id-ID", {
       day: "2-digit",
       month: "short",
-      year: "numeric",
     });
     const time = d.toLocaleTimeString("id-ID", {
       hour: "2-digit",
       minute: "2-digit",
     });
-    return `${day}, ${date}\n${time}`;
+    return `${date}\n${time}`;
   }, [transaction.date]);
 
   const anySheetOpen =
@@ -924,33 +903,14 @@ const TransactionModal = () => {
         />
       </SheetModal>
 
-      {/* DATE SHEET */}
-      <SheetModal
+      <DateTimeSheetPicker
         visible={dateModalVisible}
-        title="Select Date"
+        title="Select Date & Time"
+        value={transaction.date as Date}
+        withTime
         onClose={() => setDateModalVisible(false)}
-      >
-        <View style={{ paddingBottom: spacingY._10 }}>
-          <DateTimePicker
-            themeVariant="dark"
-            value={transaction.date as Date}
-            mode="date"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={onDateChange}
-          />
-        </View>
-
-        {Platform.OS === "ios" && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-            onPress={() => setDateModalVisible(false)}
-          >
-            <Typo fontWeight={"900"} color={colors.black}>
-              OK
-            </Typo>
-          </TouchableOpacity>
-        )}
-      </SheetModal>
+        onConfirm={(next) => setTransaction((p) => ({ ...p, date: next }))}
+      />
 
       {/* CALCULATOR SHEET */}
       <SheetModal
@@ -1380,7 +1340,7 @@ const styles = StyleSheet.create({
   padDateBtn: {
     flex: 0,
     width: "24%",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacingX._12,
     gap: scale(2),
