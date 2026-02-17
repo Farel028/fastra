@@ -33,7 +33,15 @@ const Register = () => {
     setIsLoading(false);
     if (!res.success) {
       Alert.alert("Sign up", res.msg);
+      return;
     }
+
+    Alert.alert("Verify Email", res.msg || "Verification email has been sent.", [
+      {
+        text: "OK",
+        onPress: () => router.replace("./login"),
+      },
+    ]);
   };
   return (
     <ScreenWrapper>
