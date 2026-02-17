@@ -1,9 +1,16 @@
 import { auth, firestore } from "@/config/firebase";
+import {
+  addNotificationListeners,
+  registerForPushNotificationsAsync,
+  saveExpoPushToken,
+} from "@/services/notificationService";
 import { AuthContextType, UserType } from "@/types";
 import { useRouter } from "expo-router";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
+  signOut,
   signInWithEmailAndPassword,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
@@ -18,16 +25,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          uid: firebaseUser?.uid,
-          email: firebaseUser?.email,
-          name: firebaseUser?.displayName,
-        });
-        updateUserData(firebaseUser.uid);
-        router.replace("/(tabs)");
-      } else {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          await firebaseUser.reload();
+
+          if (!firebaseUser.emailVerified) {
+            setUser(null);
+            router.replace("/(auth)/welcome");
+            return;
+          }
+
+          setUser({
+            uid: firebaseUser?.uid,
+            email: firebaseUser?.email,
+            name: firebaseUser?.displayName,
+          });
+          updateUserData(firebaseUser.uid);
+          router.replace("/(tabs)");
+          return;
+        }
+
+        setUser(null);
+        router.replace("/(auth)/welcome");
+      } catch (error) {
+        console.log("Auth state check failed: ", error);
         setUser(null);
         router.replace("/(auth)/welcome");
       }
@@ -36,20 +58,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    const removeListeners = addNotificationListeners();
+    return removeListeners;
+  }, []);
+
+  useEffect(() => {
+    const syncPushToken = async () => {
+      if (!user?.uid) return;
+
+      try {
+        const token = await registerForPushNotificationsAsync();
+        if (!token) return;
+
+        await saveExpoPushToken(user.uid, token);
+      } catch (error) {
+        console.log("Failed to register push token: ", error);
+      }
+    };
+
+    syncPushToken();
+  }, [user?.uid]);
+
   const login = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const response = await signInWithEmailAndPassword(auth, email, password);
+      await response.user.reload();
+
+      if (!response.user.emailVerified) {
+        await signOut(auth);
+        return {
+          success: false,
+          msg: "Please verify your email first. Check inbox or spam, then login again.",
+        };
+      }
+
       return { success: true };
     } catch (error: any) {
       let msg = error.message;
       if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      if (msg.includes("(auth/too-many-requests)"))
+        msg = "Too many attempts. Try again later.";
       return { success: false, msg };
     }
   };
   const register = async (email: string, password: string, name: string) => {
     try {
-      let response = await createUserWithEmailAndPassword(
+      const response = await createUserWithEmailAndPassword(
         auth,
         email,
         password,
@@ -59,12 +115,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         email,
         uid: response?.user?.uid,
       });
-      return { success: true };
+      await sendEmailVerification(response.user);
+      await signOut(auth);
+      return {
+        success: true,
+        msg: "Account created. Please verify your email before logging in.",
+      };
     } catch (error: any) {
       let msg = error.message;
       if (msg.includes("(auth/email-already-in-use)"))
         msg = "This email is already in use";
       if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      if (msg.includes("(auth/weak-password)"))
+        msg = "Password should be at least 6 characters.";
       return { success: false, msg };
     }
   };
