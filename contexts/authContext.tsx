@@ -1,7 +1,9 @@
 import { auth, firestore } from "@/config/firebase";
 import {
   addNotificationListeners,
+  cancelDailyReminderNotifications,
   registerForPushNotificationsAsync,
+  scheduleDailyReminderNotifications,
   saveExpoPushToken,
 } from "@/services/notificationService";
 import { AuthContextType, UserType } from "@/types";
@@ -65,20 +67,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const syncPushToken = async () => {
-      if (!user?.uid) return;
-
       try {
-        const token = await registerForPushNotificationsAsync();
-        if (!token) return;
+        if (!user?.uid) {
+          await cancelDailyReminderNotifications();
+          return;
+        }
 
-        await saveExpoPushToken(user.uid, token);
+        const token = await registerForPushNotificationsAsync();
+        if (token) {
+          await saveExpoPushToken(user.uid, token);
+        }
+
+        await scheduleDailyReminderNotifications(user?.name ?? null);
       } catch (error) {
         console.log("Failed to register push token: ", error);
       }
     };
 
     syncPushToken();
-  }, [user?.uid]);
+  }, [user?.uid, user?.name]);
 
   const login = async (email: string, password: string) => {
     try {
