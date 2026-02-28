@@ -14,11 +14,41 @@ import {
   sendEmailVerification,
   signOut,
   signInWithEmailAndPassword,
+  User as FirebaseUser,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext<AuthContextType | null>(null);
+const EMAIL_VERIFICATION_RETRY_DELAYS_MS = [0, 2000, 5000];
+
+type EmailVerificationState = "verified" | "unverified" | "unknown";
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const resolveEmailVerificationState = async (
+  firebaseUser: FirebaseUser,
+): Promise<EmailVerificationState> => {
+  if (firebaseUser.emailVerified) return "verified";
+
+  for (let attempt = 0; attempt < EMAIL_VERIFICATION_RETRY_DELAYS_MS.length; attempt++) {
+    const waitMs = EMAIL_VERIFICATION_RETRY_DELAYS_MS[attempt];
+    if (waitMs > 0) await sleep(waitMs);
+
+    try {
+      await firebaseUser.reload();
+      return firebaseUser.emailVerified ? "verified" : "unverified";
+    } catch (error) {
+      console.log(
+        `Failed to refresh email verification state (${attempt + 1}/${EMAIL_VERIFICATION_RETRY_DELAYS_MS.length})`,
+        error,
+      );
+    }
+  }
+
+  return "unknown";
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -27,15 +57,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const router = useRouter();
 
   useEffect(() => {
+    let isMounted = true;
+
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
-          await firebaseUser.reload();
+          const verificationState =
+            await resolveEmailVerificationState(firebaseUser);
 
-          if (!firebaseUser.emailVerified) {
+          if (!isMounted) return;
+
+          if (verificationState === "unverified") {
             setUser(null);
             router.replace("/(auth)/welcome");
             return;
+          }
+
+          if (verificationState === "unknown") {
+            console.log(
+              "Using cached auth session because verification status could not be refreshed.",
+            );
           }
 
           setUser({
@@ -43,22 +84,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             email: firebaseUser?.email,
             name: firebaseUser?.displayName,
           });
-          updateUserData(firebaseUser.uid);
+          void updateUserData(firebaseUser.uid);
           router.replace("/(tabs)");
           return;
         }
 
+        if (!isMounted) return;
         setUser(null);
         router.replace("/(auth)/welcome");
       } catch (error) {
         console.log("Auth state check failed: ", error);
+        if (!isMounted) return;
         setUser(null);
         router.replace("/(auth)/welcome");
       }
     });
 
-    return () => unsub();
-  }, []);
+    return () => {
+      isMounted = false;
+      unsub();
+    };
+  }, [router]);
 
   useEffect(() => {
     const removeListeners = addNotificationListeners();
@@ -90,10 +136,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const login = async (email: string, password: string) => {
     try {
       const response = await signInWithEmailAndPassword(auth, email, password);
-      await response.user.reload();
-
       if (!response.user.emailVerified) {
+        const verificationState = await resolveEmailVerificationState(
+          response.user,
+        );
+
+        if (verificationState === "verified") {
+          return { success: true };
+        }
+
         await signOut(auth);
+
+        if (verificationState === "unknown") {
+          return {
+            success: false,
+            msg: "Unable to verify your email due to network issues. Please try again on a stable connection.",
+          };
+        }
+
         return {
           success: false,
           msg: "Please verify your email first. Check inbox or spam, then login again.",
@@ -155,8 +215,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser({ ...userData });
       }
     } catch (error: any) {
-      let msg = error.message;
-      //   return { success: false, msg };
       console.log("error: ", error);
     }
   };
