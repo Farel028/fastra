@@ -1,10 +1,11 @@
+import { firestore } from "@/config/firebase";
 import { expenseCategories, incomeCategories } from "@/constants/data";
 import { ExpenseCategoriesType } from "@/types";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
 
-const EXPENSE_STORAGE_KEY = "entrack.expense_categories.v1";
-const INCOME_STORAGE_KEY = "entrack.income_categories.v1";
+const EXPENSE_FIELD = "expenseCategories";
+const INCOME_FIELD = "incomeCategories";
 
 const isPhosphorIcon = (
   key: string,
@@ -37,6 +38,7 @@ export type StoredCategory = {
 
 export type StoredExpenseCategory = StoredCategory;
 export type StoredIncomeCategory = StoredCategory;
+export type CategoryStorageResponse = { success: boolean; msg?: string };
 
 const defaultCategoryIconByValue: Record<string, CategoryIconName> = {
   salary: "WalletIcon",
@@ -75,6 +77,11 @@ const slugify = (value: unknown) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+
+const getCategoryField = (kind: CategoryKind) =>
+  kind === "income" ? INCOME_FIELD : EXPENSE_FIELD;
+
+const getUserDocRef = (uid: string) => doc(firestore, "users", uid);
 
 export const normalizeHexColor = (
   value: unknown,
@@ -115,6 +122,11 @@ const sanitizeStoredCategory = (
     isDefault: Boolean(raw?.isDefault ?? fallback?.isDefault),
   };
 };
+
+const sanitizeCategoryList = <T extends StoredCategory>(items: T[]): T[] =>
+  items
+    .map((item) => sanitizeStoredCategory(item))
+    .filter(Boolean) as T[];
 
 export const DEFAULT_EXPENSE_CATEGORIES: StoredExpenseCategory[] = Object.values(
   expenseCategories,
@@ -170,61 +182,77 @@ const mergeWithDefaults = (
   return [...withDefaults, ...custom];
 };
 
-export const loadExpenseCategories = async (): Promise<
-  StoredExpenseCategory[]
-> => {
+const loadCategoriesByKind = async <T extends StoredCategory>(
+  uid: string | undefined,
+  kind: CategoryKind,
+  defaults: T[],
+): Promise<T[]> => {
+  if (!uid) return defaults;
+
   try {
-    const raw = await AsyncStorage.getItem(EXPENSE_STORAGE_KEY);
-    if (!raw) return DEFAULT_EXPENSE_CATEGORIES;
+    const snap = await getDoc(getUserDocRef(uid));
+    if (!snap.exists()) return defaults;
 
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return DEFAULT_EXPENSE_CATEGORIES;
+    const raw = snap.data()?.[getCategoryField(kind)];
+    if (!Array.isArray(raw)) return defaults;
 
-    return mergeWithDefaults(
-      parsed,
-      DEFAULT_EXPENSE_CATEGORIES,
-    ) as StoredExpenseCategory[];
+    return mergeWithDefaults(raw, defaults) as T[];
   } catch {
-    return DEFAULT_EXPENSE_CATEGORIES;
+    return defaults;
   }
 };
 
-export const loadIncomeCategories = async (): Promise<StoredIncomeCategory[]> => {
+const saveCategoriesByKind = async <T extends StoredCategory>(
+  uid: string | undefined,
+  kind: CategoryKind,
+  items: T[],
+): Promise<CategoryStorageResponse> => {
+  if (!uid) {
+    return {
+      success: false,
+      msg: "You need to login first.",
+    };
+  }
+
   try {
-    const raw = await AsyncStorage.getItem(INCOME_STORAGE_KEY);
-    if (!raw) return DEFAULT_INCOME_CATEGORIES;
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return DEFAULT_INCOME_CATEGORIES;
-
-    return mergeWithDefaults(
-      parsed,
-      DEFAULT_INCOME_CATEGORIES,
-    ) as StoredIncomeCategory[];
-  } catch {
-    return DEFAULT_INCOME_CATEGORIES;
+    const sanitized = sanitizeCategoryList(items);
+    await setDoc(
+      getUserDocRef(uid),
+      {
+        [getCategoryField(kind)]: sanitized,
+      },
+      { merge: true },
+    );
+    return { success: true };
+  } catch (error: any) {
+    return {
+      success: false,
+      msg: error?.message || "Failed to save categories.",
+    };
   }
 };
+
+export const loadExpenseCategories = async (
+  uid?: string,
+): Promise<StoredExpenseCategory[]> =>
+  loadCategoriesByKind(uid, "expense", DEFAULT_EXPENSE_CATEGORIES);
+
+export const loadIncomeCategories = async (
+  uid?: string,
+): Promise<StoredIncomeCategory[]> =>
+  loadCategoriesByKind(uid, "income", DEFAULT_INCOME_CATEGORIES);
 
 export const saveExpenseCategories = async (
+  uid: string | undefined,
   items: StoredExpenseCategory[],
-): Promise<void> => {
-  const sanitized = items
-    .map((item) => sanitizeStoredCategory(item))
-    .filter(Boolean) as StoredExpenseCategory[];
-
-  await AsyncStorage.setItem(EXPENSE_STORAGE_KEY, JSON.stringify(sanitized));
-};
+): Promise<CategoryStorageResponse> =>
+  saveCategoriesByKind(uid, "expense", items);
 
 export const saveIncomeCategories = async (
+  uid: string | undefined,
   items: StoredIncomeCategory[],
-): Promise<void> => {
-  const sanitized = items
-    .map((item) => sanitizeStoredCategory(item))
-    .filter(Boolean) as StoredIncomeCategory[];
-
-  await AsyncStorage.setItem(INCOME_STORAGE_KEY, JSON.stringify(sanitized));
-};
+): Promise<CategoryStorageResponse> =>
+  saveCategoriesByKind(uid, "income", items);
 
 export const createExpenseCategoryMap = (
   items: StoredExpenseCategory[],
@@ -269,3 +297,4 @@ export const buildUniqueCategoryValue = (
 
   return candidate;
 };
+

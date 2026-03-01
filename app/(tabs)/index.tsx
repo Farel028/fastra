@@ -11,8 +11,14 @@ import { verticalScale } from "@/utils/styling";
 import { useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const homeFeatures = [
   {
@@ -24,13 +30,31 @@ const homeFeatures = [
 ];
 
 const Home = () => {
-  const { user } = useAuth();
+  const { user, refreshAuthSession } = useAuth();
   const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
 
-  const constraints = [where("uid", "==", user?.uid), orderBy("date", "desc")];
+  const canFetchTransactions = Boolean(user?.uid);
+  const constraints = canFetchTransactions
+    ? [where("uid", "==", user?.uid), orderBy("date", "desc")]
+    : [];
 
   const { data: recentTransaction, loading: transactionLoading } =
-    useFetchData<TransactionType>("transactions", constraints);
+    useFetchData<TransactionType>(
+      canFetchTransactions ? "transactions" : "",
+      constraints,
+      user?.uid,
+    );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshAuthSession();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshAuthSession]);
+
   return (
     <ScreenWrapper>
       <View style={styles.container}>
@@ -58,6 +82,15 @@ const Home = () => {
         <ScrollView
           contentContainerStyle={styles.scrollViewStyle}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+              progressBackgroundColor={colors.neutral800}
+            />
+          }
         >
           <View>
             <HomeCard />

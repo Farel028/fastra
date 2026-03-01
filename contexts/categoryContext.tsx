@@ -1,4 +1,5 @@
 import { ExpenseCategoriesType } from "@/types";
+import { useAuth } from "@/contexts/authContext";
 import React, {
   createContext,
   useCallback,
@@ -54,12 +55,13 @@ type CategoryContextType = {
     input: UpdateCategoryInput,
   ) => Promise<SaveResponse>;
   deleteCategory: (kind: CategoryKind, value: string) => Promise<SaveResponse>;
-  resetCategories: (kind?: CategoryKind) => Promise<void>;
+  resetCategories: (kind?: CategoryKind) => Promise<SaveResponse>;
 };
 
 const CategoryContext = createContext<CategoryContextType | null>(null);
 
 export const CategoryProvider = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
   const [expenseCategoryList, setExpenseCategoryList] = useState<
     StoredExpenseCategory[]
   >(
@@ -74,9 +76,20 @@ export const CategoryProvider = ({ children }: { children: React.ReactNode }) =>
     let mounted = true;
 
     const init = async () => {
+      if (!user?.uid) {
+        if (mounted) {
+          setExpenseCategoryList(DEFAULT_EXPENSE_CATEGORIES);
+          setIncomeCategoryList(DEFAULT_INCOME_CATEGORIES);
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+
       const [expenseData, incomeData] = await Promise.all([
-        loadExpenseCategories(),
-        loadIncomeCategories(),
+        loadExpenseCategories(user.uid),
+        loadIncomeCategories(user.uid),
       ]);
       if (mounted) {
         setExpenseCategoryList(expenseData);
@@ -90,7 +103,7 @@ export const CategoryProvider = ({ children }: { children: React.ReactNode }) =>
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [user?.uid]);
 
   const categories = useMemo<ExpenseCategoriesType>(
     () => createExpenseCategoryMap(expenseCategoryList),
@@ -102,18 +115,28 @@ export const CategoryProvider = ({ children }: { children: React.ReactNode }) =>
     [incomeCategoryList],
   );
 
-  const persist = useCallback(async (kind: CategoryKind, next: StoredCategory[]) => {
-    if (kind === "income") {
-      const normalized = next as StoredIncomeCategory[];
-      setIncomeCategoryList(normalized);
-      await saveIncomeCategories(normalized);
-      return;
-    }
+  const persist = useCallback(
+    async (kind: CategoryKind, next: StoredCategory[]): Promise<SaveResponse> => {
+      if (!user?.uid) {
+        return { success: false, msg: "Please login first." };
+      }
 
-    const normalized = next as StoredExpenseCategory[];
-    setExpenseCategoryList(normalized);
-    await saveExpenseCategories(normalized);
-  }, []);
+      if (kind === "income") {
+        const normalized = next as StoredIncomeCategory[];
+        const saveRes = await saveIncomeCategories(user.uid, normalized);
+        if (!saveRes.success) return saveRes;
+        setIncomeCategoryList(normalized);
+        return { success: true };
+      }
+
+      const normalized = next as StoredExpenseCategory[];
+      const saveRes = await saveExpenseCategories(user.uid, normalized);
+      if (!saveRes.success) return saveRes;
+      setExpenseCategoryList(normalized);
+      return { success: true };
+    },
+    [user?.uid],
+  );
 
   const getListByKind = useCallback(
     (kind: CategoryKind): StoredCategory[] =>
@@ -143,7 +166,8 @@ export const CategoryProvider = ({ children }: { children: React.ReactNode }) =>
         },
       ];
 
-      await persist(kind, next);
+      const saveRes = await persist(kind, next);
+      if (!saveRes.success) return saveRes;
       return { success: true, value };
     },
     [getListByKind, persist],
@@ -175,7 +199,8 @@ export const CategoryProvider = ({ children }: { children: React.ReactNode }) =>
         };
       });
 
-      await persist(kind, next);
+      const saveRes = await persist(kind, next);
+      if (!saveRes.success) return saveRes;
       return { success: true };
     },
     [getListByKind, persist],
@@ -192,31 +217,38 @@ export const CategoryProvider = ({ children }: { children: React.ReactNode }) =>
       }
 
       const next = categoryList.filter((item) => item.value !== normalizedValue);
-      await persist(kind, next);
-
+      const saveRes = await persist(kind, next);
+      if (!saveRes.success) return saveRes;
       return { success: true };
     },
     [getListByKind, persist],
   );
 
-  const resetCategories = useCallback(async (kind?: CategoryKind) => {
+  const resetCategories = useCallback(async (kind?: CategoryKind): Promise<SaveResponse> => {
+    if (!user?.uid) {
+      return { success: false, msg: "Please login first." };
+    }
+
     if (!kind) {
+      const [expenseRes, incomeRes] = await Promise.all([
+        saveExpenseCategories(user.uid, DEFAULT_EXPENSE_CATEGORIES),
+        saveIncomeCategories(user.uid, DEFAULT_INCOME_CATEGORIES),
+      ]);
+
+      if (!expenseRes.success) return expenseRes;
+      if (!incomeRes.success) return incomeRes;
+
       setExpenseCategoryList(DEFAULT_EXPENSE_CATEGORIES);
       setIncomeCategoryList(DEFAULT_INCOME_CATEGORIES);
-      await Promise.all([
-        saveExpenseCategories(DEFAULT_EXPENSE_CATEGORIES),
-        saveIncomeCategories(DEFAULT_INCOME_CATEGORIES),
-      ]);
-      return;
+      return { success: true };
     }
 
     if (kind === "income") {
-      await persist("income", DEFAULT_INCOME_CATEGORIES);
-      return;
+      return persist("income", DEFAULT_INCOME_CATEGORIES);
     }
 
-    await persist("expense", DEFAULT_EXPENSE_CATEGORIES);
-  }, [persist]);
+    return persist("expense", DEFAULT_EXPENSE_CATEGORIES);
+  }, [persist, user?.uid]);
 
   return (
     <CategoryContext.Provider

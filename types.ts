@@ -144,19 +144,37 @@ export type UserDataType = {
   image?: any;
 };
 
+export type AuthActionCode =
+  | "EMAIL_NOT_VERIFIED"
+  | "INVALID_CREDENTIALS"
+  | "INVALID_EMAIL"
+  | "TOO_MANY_REQUESTS"
+  | "USER_NOT_FOUND"
+  | "NETWORK_ERROR"
+  | "UNKNOWN";
+
+export type AuthActionResponse = {
+  success: boolean;
+  msg?: string;
+  code?: AuthActionCode;
+};
+
 export type AuthContextType = {
   user: UserType;
   setUser: Function;
-  login: (
-    email: string,
-    password: string
-  ) => Promise<{ success: boolean; msg?: string }>;
+  login: (email: string, password: string) => Promise<AuthActionResponse>;
   register: (
     email: string,
     password: string,
     name: string
-  ) => Promise<{ success: boolean; msg?: string }>;
+  ) => Promise<AuthActionResponse>;
+  resendVerificationEmail: (
+    email: string,
+    password: string
+  ) => Promise<AuthActionResponse>;
+  forgotPassword: (email: string) => Promise<AuthActionResponse>;
   updateUserData: (userId: string) => Promise<void>;
+  refreshAuthSession: () => Promise<AuthActionResponse>;
 };
 
 export type ResponseType = {
