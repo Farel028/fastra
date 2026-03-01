@@ -4,8 +4,7 @@ import ScreenWrapper from "@/components/ScreenWrapper";
 import Typo from "@/components/Typo";
 import { colors, radius, spacingX, spacingY } from "@/constants/theme";
 import { useCategories } from "@/contexts/categoryContext";
-import { CategoryKind } from "@/services/categoryService";
-import { categoryIconMap } from "@/services/categoryService";
+import { CategoryKind, categoryIconMap } from "@/services/categoryService";
 import { verticalScale } from "@/utils/styling";
 import { useRouter } from "expo-router";
 import * as Icons from "phosphor-react-native";
@@ -49,7 +48,10 @@ const Categories = () => {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            await resetCategories(kind);
+            const res = await resetCategories(kind);
+            if (!res.success) {
+              Alert.alert("Categories", res.msg || "Failed to reset categories.");
+            }
           },
         },
       ],

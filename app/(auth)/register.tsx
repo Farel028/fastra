@@ -50,7 +50,7 @@ const Register = () => {
 
         <View style={{ gap: 5, marginTop: spacingY._20 }}>
           <Typo size={30} fontWeight={"800"}>
-            Let's
+            {"Let's"}
           </Typo>
           <Typo size={30} fontWeight={"800"}>
             Get started
@@ -59,7 +59,7 @@ const Register = () => {
 
         <View style={styles.form}>
           <Typo size={16} color={colors.textLighter}>
-            Create am account to track your expenses
+            Create an account to track your expenses
           </Typo>
           <Input
             placeholder="Enter your name"
