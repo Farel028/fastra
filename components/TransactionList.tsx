@@ -74,6 +74,38 @@ const parseDebtDisplay = (
 const getWalletId = (w: WalletType) =>
   String((w as any)?.id ?? (w as any)?.docId ?? (w as any)?.walletId ?? "");
 
+const parseTransactionDate = (date: TransactionType["date"]): Date | null => {
+  const parsedDate =
+    typeof (date as { toDate?: () => Date })?.toDate === "function"
+      ? (date as { toDate: () => Date }).toDate()
+      : date instanceof Date
+        ? date
+        : new Date(date as string);
+
+  if (Number.isNaN(parsedDate.getTime())) return null;
+  return parsedDate;
+};
+
+const getMonthYearKey = (date: TransactionType["date"]) => {
+  const parsedDate = parseTransactionDate(date);
+  if (!parsedDate) return "unknown";
+  return `${parsedDate.getFullYear()}-${parsedDate.getMonth()}`;
+};
+
+const formatMonthYear = (date: TransactionType["date"], locale = "id-ID") => {
+  const parsedDate = parseTransactionDate(date);
+  if (!parsedDate) return "Unknown period";
+
+  const currentYear = new Date().getFullYear();
+  const transactionYear = parsedDate.getFullYear();
+  const formatOptions: Intl.DateTimeFormatOptions =
+    transactionYear === currentYear
+      ? { month: "long" }
+      : { month: "long", year: "numeric" };
+
+  return parsedDate.toLocaleDateString(locale, formatOptions);
+};
+
 const TransactionList = ({
   data,
   title,
@@ -81,6 +113,8 @@ const TransactionList = ({
   emptyListMessage,
   fitParent = false,
   disableItemAnimation = false,
+  showMonthYearHeader = false,
+  monthYearLocale = "id-ID",
 }: TransactionListType) => {
   const router = useRouter();
   const { user } = useAuth();
@@ -184,15 +218,35 @@ const TransactionList = ({
           }
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          renderItem={({ item, index }) => (
-            <TransactionItem
-              item={item}
-              index={index}
-              handleClick={handleClick}
-              disableAnimation={disableItemAnimation}
-              descriptionText={getDisplayDescription(item)}
-            />
-          )}
+          renderItem={({ item, index }) => {
+            const previousItem = visibleData[index - 1];
+            const shouldShowMonthHeader =
+              showMonthYearHeader &&
+              (!previousItem ||
+                getMonthYearKey(previousItem.date) !== getMonthYearKey(item.date));
+
+            return (
+              <View>
+                {shouldShowMonthHeader && (
+                  <Typo
+                    size={13}
+                    color={colors.neutral300}
+                    fontWeight={"600"}
+                    style={styles.monthYearHeader}
+                  >
+                    {formatMonthYear(item.date, monthYearLocale)}
+                  </Typo>
+                )}
+                <TransactionItem
+                  item={item}
+                  index={index}
+                  handleClick={handleClick}
+                  disableAnimation={disableItemAnimation}
+                  descriptionText={getDisplayDescription(item)}
+                />
+              </View>
+            );
+          }}
         />
       </View>
       {!loading && visibleData.length === 0 && (
@@ -371,5 +425,11 @@ const styles = StyleSheet.create({
   amountDate: {
     alignItems: "flex-end",
     gap: 3,
+  },
+  monthYearHeader: {
+    marginBottom: spacingY._7,
+    marginTop: spacingY._5,
+    marginLeft: spacingX._3,
+    textTransform: "capitalize",
   },
 });

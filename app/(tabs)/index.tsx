@@ -129,6 +129,8 @@ const Home = () => {
             loading={transactionLoading}
             title="Recent Transactions"
             emptyListMessage="No transactions yet"
+            showMonthYearHeader
+            monthYearLocale="id-ID"
           />
         </ScrollView>
 
