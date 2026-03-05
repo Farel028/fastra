@@ -97,6 +97,8 @@ export type TransactionListType = {
   emptyListMessage?: string;
   fitParent?: boolean;
   disableItemAnimation?: boolean;
+  showMonthYearHeader?: boolean;
+  monthYearLocale?: string;
 };
 
 export type TransactionItemProps = {
