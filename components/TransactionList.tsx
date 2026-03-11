@@ -329,12 +329,11 @@ export const TransactionItem = ({
       month: "short",
     });
 
-  const amountColor =
-    type === "income"
+  const amountColor = isTransfer
+    ? colors.neutral300
+    : type === "income"
       ? colors.primary
-      : isTransfer
-        ? colors.neutral200
-        : colors.rose;
+      : colors.rose;
 
   const sign =
     isTransfer ? "" : type === "income" ? "+ " : type === "expense" ? "- " : "";

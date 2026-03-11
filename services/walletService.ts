@@ -52,11 +52,16 @@ export const createOrUpdateWallet = async (
   }
 };
 
-export const deleteWallet = async (walletId: string): Promise<ResponseType> => {
+export const deleteWallet = async (
+  walletId: string,
+  uid?: string,
+): Promise<ResponseType> => {
   try {
+    const cleanupRes = await deleteTransactionByWalletId(walletId, uid);
+    if (!cleanupRes.success) return cleanupRes;
+
     const walletRef = doc(firestore, "wallets", walletId);
     await deleteDoc(walletRef);
-    deleteTransactionByWalletId(walletId);
     return { success: true, msg: "Wallet deleted successfully" };
   } catch (err: any) {
     return { success: false, msg: err.message };
@@ -65,13 +70,19 @@ export const deleteWallet = async (walletId: string): Promise<ResponseType> => {
 
 export const deleteTransactionByWalletId = async (
   walletId: string,
+  uid?: string,
 ): Promise<ResponseType> => {
   try {
     let hasMoreTransaction = true;
     while (hasMoreTransaction) {
+      const constraints = [where("walletId", "==", walletId)];
+      if (uid) {
+        constraints.push(where("uid", "==", uid));
+      }
+
       const transactionQuery = query(
         collection(firestore, "transactions"),
-        where("walletId", "==", walletId),
+        ...constraints,
       );
 
       const transactionSnapshot = await getDocs(transactionQuery);

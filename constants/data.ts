@@ -129,7 +129,7 @@ export const incomeCategory: CategoryType = incomeCategories.salary;
 export const transferCategory: CategoryType = {
   label: "Transfer",
   value: "transfer",
-  icon: Icons.WalletIcon,
+  icon: Icons.ArrowsLeftRightIcon,
   bgColor: "#0EA5E9",
 };
 

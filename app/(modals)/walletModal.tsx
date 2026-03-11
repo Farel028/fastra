@@ -333,7 +333,7 @@ const WalletModal = () => {
   const onDelete = async () => {
     if (!oldWallet?.id) return;
     setLoading(true);
-    const res = await deleteWallet(oldWallet?.id);
+    const res = await deleteWallet(oldWallet?.id, user?.uid);
     setLoading(false);
     if (res.success) {
       router.back();

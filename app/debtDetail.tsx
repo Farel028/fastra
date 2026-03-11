@@ -71,10 +71,10 @@ export default function DebtDetail() {
   const dueISO = first(params.dueDate);
   const createdISO = first(params.created);
 
-  const debtConstraints = useMemo(
-    () => (id ? [where(documentId(), "==", id)] : []),
-    [id],
-  );
+  const debtConstraints = useMemo(() => {
+    if (!user?.uid || !id) return [];
+    return [where("uid", "==", user.uid), where(documentId(), "==", id)];
+  }, [id, user?.uid]);
 
   const { data: debtRaw, loading: debtLoading } = useFetchData<DebtDoc>(
     user?.uid && id ? "debts" : "",

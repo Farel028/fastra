@@ -88,12 +88,12 @@ export default function TransactionDetail() {
 
   // ---- TRANSACTION META FETCH (guarded) ----
   const transactionConstraints = useMemo(() => {
-    if (!id) return [];
-    return [where(documentId(), "==", id)];
-  }, [id]);
+    if (!user?.uid || !id) return [];
+    return [where("uid", "==", user.uid), where(documentId(), "==", id)];
+  }, [id, user?.uid]);
 
   const { data: transactionRaw } = useFetchData<TransactionMetaDoc>(
-    id ? "transactions" : "",
+    user?.uid && id ? "transactions" : "",
     transactionConstraints,
   );
 
@@ -154,12 +154,12 @@ export default function TransactionDetail() {
   const isDebtTransaction = Boolean(debtMeta?.debtId);
 
   const debtConstraints = useMemo(() => {
-    if (!debtMeta?.debtId) return [];
-    return [where(documentId(), "==", debtMeta.debtId)];
-  }, [debtMeta?.debtId]);
+    if (!user?.uid || !debtMeta?.debtId) return [];
+    return [where("uid", "==", user.uid), where(documentId(), "==", debtMeta.debtId)];
+  }, [debtMeta?.debtId, user?.uid]);
 
   const { data: debtRaw } = useFetchData<DebtDoc>(
-    debtMeta?.debtId ? "debts" : "",
+    user?.uid && debtMeta?.debtId ? "debts" : "",
     debtConstraints,
   );
 
@@ -229,7 +229,22 @@ export default function TransactionDetail() {
   const categoryText = category?.label || defaultTypeText;
 
   const isIncome = type === "income";
-  const amountColor = isIncome ? colors.primary : colors.rose;
+  const amountColor = isTransferTransaction
+    ? colors.neutral300
+    : isIncome
+      ? colors.primary
+      : colors.rose;
+  const amountSign = isTransferTransaction ? "" : isIncome ? "+" : "-";
+  const heroIconBg = isTransferTransaction
+    ? colors.neutral800
+    : isIncome
+      ? "#10221A"
+      : "#2A1012";
+  const heroIconColor = isTransferTransaction
+    ? colors.neutral300
+    : isIncome
+      ? colors.primary
+      : colors.rose;
 
   const debtKindText =
     debt?.kind === "PIUTANG"
@@ -337,19 +352,25 @@ export default function TransactionDetail() {
             <View
               style={[
                 styles.heroIcon,
-                { backgroundColor: isIncome ? "#10221A" : "#2A1012" },
+                { backgroundColor: heroIconBg },
               ]}
             >
-              {isIncome ? (
+              {isTransferTransaction ? (
+                <Icons.ArrowsLeftRightIcon
+                  size={verticalScale(36)}
+                  color={heroIconColor}
+                  weight="bold"
+                />
+              ) : isIncome ? (
                 <Icons.ArrowUp
                   size={verticalScale(36)}
-                  color={colors.primary}
+                  color={heroIconColor}
                   weight="bold"
                 />
               ) : (
                 <Icons.ArrowDown
                   size={verticalScale(36)}
-                  color={colors.rose}
+                  color={heroIconColor}
                   weight="bold"
                 />
               )}
@@ -361,7 +382,7 @@ export default function TransactionDetail() {
               color={amountColor}
               style={{ marginTop: spacingY._10 }}
             >
-              {isIncome ? "+" : "-"}
+              {amountSign}
               {formatRupiah(amount)}
             </Typo>
 
