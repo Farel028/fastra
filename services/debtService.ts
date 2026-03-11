@@ -346,7 +346,8 @@ export const deleteDebt = async (args: {
     if (debt.initialTransferId) transferIds.add(debt.initialTransferId);
 
     const paymentsRef = collection(firestore, "debts", debtId, "payments");
-    const paymentsSnap = await getDocs(paymentsRef);
+    const paymentsQ = query(paymentsRef, where("uid", "==", debt.uid));
+    const paymentsSnap = await getDocs(paymentsQ);
 
     paymentsSnap.forEach((payDoc) => {
       const pay = payDoc.data() as PaymentDoc;

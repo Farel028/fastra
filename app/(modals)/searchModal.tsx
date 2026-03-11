@@ -17,10 +17,16 @@ const SearchModal = () => {
   const router = useRouter();
   const [search, setSearch] = useState("");
 
-  const constraints = [where("uid", "==", user?.uid), orderBy("date", "desc")];
+  const constraints = useMemo(
+    () =>
+      user?.uid
+        ? [where("uid", "==", user.uid), orderBy("date", "desc")]
+        : [],
+    [user?.uid],
+  );
 
   const { data: allTransactions, loading: transactionLoading } =
-    useFetchData<TransactionType>("transactions", constraints);
+    useFetchData<TransactionType>(user?.uid ? "transactions" : "", constraints);
 
   const normalizedSearch = search.trim().toLowerCase();
   const filteredTransactions = useMemo(
