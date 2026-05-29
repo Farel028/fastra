@@ -4,6 +4,7 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { Platform } from "react-native";
+import { devLog } from "@/utils/devLogger";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -166,7 +167,7 @@ export const registerForPushNotificationsAsync = async (): Promise<
   string | null
 > => {
   if (Platform.OS === "web") {
-    console.log("Push notifications are not supported on web.");
+    devLog("Push notifications are not supported on web.");
     return null;
   }
 
@@ -180,7 +181,7 @@ export const registerForPushNotificationsAsync = async (): Promise<
   }
 
   if (!Device.isDevice) {
-    console.log("Push notifications only work on physical devices.");
+    devLog("Push notifications only work on physical devices.");
     return null;
   }
 
@@ -193,7 +194,7 @@ export const registerForPushNotificationsAsync = async (): Promise<
   }
 
   if (finalStatus !== "granted") {
-    console.log("Push notification permission not granted.");
+    devLog("Push notification permission not granted.");
     return null;
   }
 
@@ -254,7 +255,7 @@ const cancelDailyReminderNotificationsInternal = async (): Promise<void> => {
       try {
         await Notifications.cancelScheduledNotificationAsync(item.identifier);
       } catch (error) {
-        console.log("Failed to cancel notification: ", item.identifier, error);
+        devLog("Failed to cancel notification: ", item.identifier, error);
       }
     }),
   );

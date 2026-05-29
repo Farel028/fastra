@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#171717",
         "foregroundImage": "./assets/images/icon-foreground.png",
@@ -29,6 +30,7 @@
     "plugins": [
       "expo-router",
       "expo-notifications",
+      "./plugins/withAndroidNotificationListener",
       [
         "expo-splash-screen",
         {

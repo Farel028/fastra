@@ -6,6 +6,7 @@ import {
   scheduleDailyReminderNotifications,
   saveExpoPushToken,
 } from "@/services/notificationService";
+import { setNotificationImportActiveUid } from "@/services/notificationImportService";
 import {
   AuthActionCode,
   AuthActionResponse,
@@ -24,6 +25,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { devLog } from "@/utils/devLogger";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 const EMAIL_VERIFICATION_RETRY_DELAYS_MS = [0, 2000, 5000];
@@ -75,7 +77,7 @@ const resolveEmailVerificationState = async (
       await firebaseUser.reload();
       return firebaseUser.emailVerified ? "verified" : "unverified";
     } catch (error) {
-      console.log(
+      devLog(
         `Failed to refresh email verification state (${attempt + 1}/${EMAIL_VERIFICATION_RETRY_DELAYS_MS.length})`,
         error,
       );
@@ -112,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           if (verificationState === "unknown") {
-            console.log(
+            devLog(
               "Using cached auth session because verification status could not be refreshed.",
             );
           }
@@ -131,7 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser(null);
         router.replace("/(auth)/welcome");
       } catch (error) {
-        console.log("Auth state check failed: ", error);
+        devLog("Auth state check failed: ", error);
         if (!isMounted) return;
         setUser(null);
         router.replace("/(auth)/welcome");
@@ -150,6 +152,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   useEffect(() => {
+    void setNotificationImportActiveUid(user?.uid ?? null);
+  }, [user?.uid]);
+
+  useEffect(() => {
     const syncPushToken = async () => {
       try {
         if (!user?.uid) {
@@ -164,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
         await scheduleDailyReminderNotifications(user?.name ?? null);
       } catch (error) {
-        console.log("Failed to register push token: ", error);
+        devLog("Failed to register push token: ", error);
       }
     };
 
@@ -301,7 +307,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         try {
           await signOut(auth);
         } catch (error) {
-          console.log("Failed to sign out after resending verification email: ", error);
+          devLog("Failed to sign out after resending verification email: ", error);
         }
       }
 
@@ -347,7 +353,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser({ ...userData });
       }
     } catch (error: any) {
-      console.log("error: ", error);
+      devLog("error: ", error);
     }
   };
 
@@ -383,7 +389,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       if (verificationState === "unknown") {
-        console.log(
+        devLog(
           "Manual auth refresh could not confirm verification state. Continuing with cached session.",
         );
       }
@@ -404,7 +410,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             : undefined,
       };
     } catch (error: any) {
-      console.log("Failed to refresh auth session: ", error);
+      devLog("Failed to refresh auth session: ", error);
       return {
         success: false,
         msg: error?.message || "Failed to refresh auth session.",

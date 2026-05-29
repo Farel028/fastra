@@ -17,6 +17,13 @@ const settingsItems = [
     route: "/categories" as const,
     color: "#0EA5E9",
   },
+  {
+    title: "Notif Import",
+    subtitle: "Auto read bank and e-wallet notifications",
+    icon: Icons.BellIcon,
+    route: "/notification-import" as const,
+    color: "#22C55E",
+  },
 ];
 
 const Settings = () => {
@@ -39,7 +46,7 @@ const Settings = () => {
                 key={item.title}
                 activeOpacity={0.88}
                 style={styles.item}
-                onPress={() => router.push(item.route)}
+                onPress={() => router.push(item.route as any)}
               >
                 <View style={[styles.iconWrap, { backgroundColor: item.color }]}>
                   <Icon

@@ -78,6 +78,10 @@ export type TransactionType = {
   image?: any;
   uid?: string;
   walletId: string;
+  autoImported?: boolean;
+  autoImportSource?: string;
+  autoImportSourceLabel?: string;
+  autoImportDedupeKey?: string;
 };
 
 export type CategoryType = {
