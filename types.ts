@@ -142,6 +142,7 @@ export type UserType = {
   uid?: string;
   email?: string | null;
   name: string | null;
+  username?: string | null;
   image?: any;
 } | null;
 
@@ -154,8 +155,10 @@ export type AuthActionCode =
   | "EMAIL_NOT_VERIFIED"
   | "INVALID_CREDENTIALS"
   | "INVALID_EMAIL"
+  | "INVALID_USERNAME"
   | "TOO_MANY_REQUESTS"
   | "USER_NOT_FOUND"
+  | "USERNAME_IN_USE"
   | "NETWORK_ERROR"
   | "UNKNOWN";
 
@@ -168,14 +171,14 @@ export type AuthActionResponse = {
 export type AuthContextType = {
   user: UserType;
   setUser: Function;
-  login: (email: string, password: string) => Promise<AuthActionResponse>;
+  login: (identifier: string, password: string) => Promise<AuthActionResponse>;
   register: (
+    username: string,
     email: string,
-    password: string,
-    name: string
+    password: string
   ) => Promise<AuthActionResponse>;
   resendVerificationEmail: (
-    email: string,
+    identifier: string,
     password: string
   ) => Promise<AuthActionResponse>;
   forgotPassword: (email: string) => Promise<AuthActionResponse>;

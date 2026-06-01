@@ -8,7 +8,7 @@ import { getFirestore } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyDO_K0kqkUULayyQOfs4InNmd4bVhUReak",
   authDomain: "entrack-fardss.firebaseapp.com",
   projectId: "entrack-fardss",

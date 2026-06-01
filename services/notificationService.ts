@@ -34,25 +34,25 @@ const WEEKDAY_REMINDERS: ReminderTemplate[] = [
     hour: 6,
     minute: 0,
     title: "sudah siap melangkah?",
-    body: "Mulai dengan Entrack.",
+    body: "Mulai dengan Fastra.",
   },
   {
     hour: 12,
     minute: 0,
     title: "jernihkan siangmu.",
-    body: "Luangkan waktu untuk Entrack.",
+    body: "Luangkan waktu untuk Fastra.",
   },
   {
     hour: 16,
     minute: 0,
     title: "udah sejauh apa hari ini?",
-    body: "Jangan biarkan harimu berlalu tanpa Entrack.",
+    body: "Jangan biarkan harimu berlalu tanpa Fastra.",
   },
   {
     hour: 21,
     minute: 0,
     title: "hari ini sudah selesai?",
-    body: "Tutup dengan Entrack.",
+    body: "Tutup dengan Fastra.",
   },
 ];
 
@@ -61,7 +61,7 @@ const WEEKEND_REMINDERS: ReminderTemplate[] = [
     hour: 6,
     minute: 0,
     title: "nikmati pagimu.",
-    body: "Rencanakan weekend dengan Entrack",
+    body: "Rencanakan weekend dengan Fastra",
   },
   {
     hour: 12,
@@ -73,13 +73,13 @@ const WEEKEND_REMINDERS: ReminderTemplate[] = [
     hour: 16,
     minute: 0,
     title: "apa yang sudah kamu nikmati?",
-    body: "Catat di Entrack.",
+    body: "Catat di Fastra.",
   },
   {
     hour: 21,
     minute: 0,
     title: "hari hampir selesai.",
-    body: "Simpan semuanya di Entrack.",
+    body: "Simpan semuanya di Fastra.",
   },
 ];
 

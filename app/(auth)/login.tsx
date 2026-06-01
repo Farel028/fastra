@@ -14,7 +14,7 @@ import { Alert, Pressable, StyleSheet, View } from "react-native";
 const RESEND_COOLDOWN_SECONDS = 60;
 
 const Login = () => {
-  const emailRef = useRef("");
+  const identifierRef = useRef("");
   const passwordRef = useRef("");
   const [isLoading, setIsLoading] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
@@ -34,13 +34,13 @@ const Login = () => {
   }, [cooldownLeft]);
 
   const handleSubmit = async () => {
-    if (!emailRef.current || !passwordRef.current) {
+    if (!identifierRef.current || !passwordRef.current) {
       Alert.alert("Login", "Please fill all the fields");
       return;
     }
 
     setIsLoading(true);
-    const res = await loginUser(emailRef.current, passwordRef.current);
+    const res = await loginUser(identifierRef.current, passwordRef.current);
     setIsLoading(false);
     if (!res.success) {
       setShowResendVerification(res.code === "EMAIL_NOT_VERIFIED");
@@ -52,7 +52,9 @@ const Login = () => {
   };
 
   const handleForgotPassword = () => {
-    const normalizedEmail = emailRef.current.trim();
+    const normalizedEmail = identifierRef.current.includes("@")
+      ? identifierRef.current.trim()
+      : "";
 
     router.push({
       pathname: "./forgotPassword",
@@ -63,16 +65,19 @@ const Login = () => {
   const handleResendVerification = async () => {
     if (cooldownLeft > 0 || isResendingVerification) return;
 
-    if (!emailRef.current || !passwordRef.current) {
+    if (!identifierRef.current || !passwordRef.current) {
       Alert.alert(
         "Resend Verification",
-        "Please fill email and password first.",
+        "Please fill username/email and password first.",
       );
       return;
     }
 
     setIsResendingVerification(true);
-    const res = await resendVerificationEmail(emailRef.current, passwordRef.current);
+    const res = await resendVerificationEmail(
+      identifierRef.current,
+      passwordRef.current,
+    );
     setIsResendingVerification(false);
 
     if (!res.success) {
@@ -106,13 +111,14 @@ const Login = () => {
             Login now to track all your expenses
           </Typo>
           <Input
-            placeholder="Enter your email"
+            placeholder="Enter your username or email"
             onChangeText={(value) => {
-              emailRef.current = value;
+              identifierRef.current = value;
               setShowResendVerification(false);
             }}
+            autoCapitalize="none"
             icon={
-              <Icons.AtIcon
+              <Icons.UserIcon
                 size={verticalScale(26)}
                 color={colors.neutral300}
                 weight="fill"

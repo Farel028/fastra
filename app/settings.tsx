@@ -11,6 +11,13 @@ import { StyleSheet, TouchableOpacity, View } from "react-native";
 
 const settingsItems = [
   {
+    title: "Notifications",
+    subtitle: "Review imported notifications",
+    icon: Icons.BellIcon,
+    route: "/notifications" as const,
+    color: "#F59E0B",
+  },
+  {
     title: "Categories",
     subtitle: "Check and update expense categories",
     icon: Icons.GearSixIcon,
