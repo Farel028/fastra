@@ -12,23 +12,24 @@ import React, { useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 const Register = () => {
+  const usernameRef = useRef("");
   const emailRef = useRef("");
   const passwordRef = useRef("");
-  const nameRef = useRef("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { register: registerUser } = useAuth();
 
   const handleSubmit = async () => {
-    if (!emailRef.current || !passwordRef.current || !nameRef.current) {
+    if (!usernameRef.current || !emailRef.current || !passwordRef.current) {
       Alert.alert("Register", "Please fill all the fields");
       return;
     }
+
     setIsLoading(true);
     const res = await registerUser(
+      usernameRef.current,
       emailRef.current,
       passwordRef.current,
-      nameRef.current,
     );
     setIsLoading(false);
     if (!res.success) {
@@ -43,6 +44,7 @@ const Register = () => {
       },
     ]);
   };
+
   return (
     <ScreenWrapper>
       <View style={styles.container}>
@@ -62,8 +64,9 @@ const Register = () => {
             Create an account to track your expenses
           </Typo>
           <Input
-            placeholder="Enter your name"
-            onChangeText={(value) => (nameRef.current = value)}
+            placeholder="Choose a username"
+            onChangeText={(value) => (usernameRef.current = value)}
+            autoCapitalize="none"
             icon={
               <Icons.UserIcon
                 size={verticalScale(26)}
@@ -75,6 +78,7 @@ const Register = () => {
           <Input
             placeholder="Enter your email"
             onChangeText={(value) => (emailRef.current = value)}
+            autoCapitalize="none"
             icon={
               <Icons.AtIcon
                 size={verticalScale(26)}

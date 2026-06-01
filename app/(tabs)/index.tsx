@@ -6,8 +6,10 @@ import Typo from "@/components/Typo";
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
+import { loadNotificationImportManualAccess } from "@/services/notificationImportStorage";
 import { TransactionType } from "@/types";
 import { verticalScale } from "@/utils/styling";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
@@ -22,6 +24,12 @@ import {
 
 const homeFeatures = [
   {
+    key: "notifications",
+    label: "Notifications",
+    route: "/notifications",
+    icon: Icons.BellIcon,
+  },
+  {
     key: "debts",
     label: "Debts",
     route: "/debts",
@@ -33,6 +41,29 @@ const Home = () => {
   const { user, refreshAuthSession } = useAuth();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [manualAccessConfirmed, setManualAccessConfirmed] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+
+      const loadManualAccess = async () => {
+        if (!user?.uid) {
+          if (mounted) setManualAccessConfirmed(false);
+          return;
+        }
+
+        const confirmed = await loadNotificationImportManualAccess(user.uid);
+        if (mounted) setManualAccessConfirmed(confirmed);
+      };
+
+      void loadManualAccess();
+
+      return () => {
+        mounted = false;
+      };
+    }, [user?.uid]),
+  );
 
   const canFetchTransactions = Boolean(user?.uid);
   const constraints = canFetchTransactions
@@ -99,17 +130,27 @@ const Home = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {homeFeatures.map((feature) => {
               const Icon = feature.icon;
+              const showBadge = feature.key === "notifications" && !manualAccessConfirmed;
               return (
                 <View key={feature.key} style={styles.featureItem}>
                   <Button
                     style={styles.featureButton}
                     onPress={() => router.push(feature.route as any)}
                   >
-                    <Icon
-                      size={verticalScale(24)}
-                      color={colors.black}
-                      weight="bold"
-                    />
+                    <View style={styles.featureIconWrap}>
+                      <Icon
+                        size={verticalScale(24)}
+                        color={colors.black}
+                        weight="bold"
+                      />
+                      {showBadge && (
+                        <View style={styles.featureBadge}>
+                          <Typo size={10} fontWeight={"900"} color={colors.white}>
+                            1
+                          </Typo>
+                        </View>
+                      )}
+                    </View>
                   </Button>
 
                   <Typo
@@ -190,6 +231,23 @@ const styles = StyleSheet.create({
     height: verticalScale(56),
     width: verticalScale(56),
     borderRadius: 100,
+  },
+  featureIconWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  featureBadge: {
+    position: "absolute",
+    top: -verticalScale(8),
+    right: -verticalScale(8),
+    minWidth: verticalScale(18),
+    height: verticalScale(18),
+    borderRadius: verticalScale(18),
+    paddingHorizontal: 4,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
   },
   featureLabel: {
     textAlign: "center",

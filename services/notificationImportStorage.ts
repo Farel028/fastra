@@ -14,11 +14,14 @@ const ACTIVE_UID_KEY = `${STORAGE_PREFIX}:active-uid`;
 const CONFIG_KEY = `${STORAGE_PREFIX}:config`;
 const SEEN_KEY_PREFIX = `${STORAGE_PREFIX}:seen`;
 const DEBUG_KEY_PREFIX = `${STORAGE_PREFIX}:debug`;
+const MANUAL_ACCESS_KEY_PREFIX = `${STORAGE_PREFIX}:manual-access`;
 const SEEN_MAX_ITEMS = 200;
 const SEEN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const getSeenStorageKey = (uid: string): string => `${SEEN_KEY_PREFIX}:${uid}`;
 const getDebugStorageKey = (uid: string): string => `${DEBUG_KEY_PREFIX}:${uid}`;
+const getManualAccessKey = (uid: string): string =>
+  `${MANUAL_ACCESS_KEY_PREFIX}:${uid}`;
 
 export const getActiveNotificationImportUid = async (): Promise<string | null> => {
   return AsyncStorage.getItem(ACTIVE_UID_KEY);
@@ -200,6 +203,20 @@ export const saveNotificationImportConfig = async (
 };
 
 export const loadNotificationImportConfig = getNotificationConfig;
+
+export const loadNotificationImportManualAccess = async (
+  uid: string,
+): Promise<boolean> => {
+  const raw = await AsyncStorage.getItem(getManualAccessKey(uid));
+  return raw === "true";
+};
+
+export const saveNotificationImportManualAccess = async (
+  uid: string,
+  confirmed: boolean,
+): Promise<void> => {
+  await AsyncStorage.setItem(getManualAccessKey(uid), confirmed ? "true" : "false");
+};
 
 export const fetchVisibleWallets = async (uid: string): Promise<WalletType[]> => {
   const walletQuery = query(

@@ -1,5 +1,9 @@
-import { firestore } from "@/config/firebase";
-import { createOrUpdateTransaction } from "@/services/transactionService";
+import {
+  parseRawNotification,
+  resolveTransaction
+} from "@/services/notificationImportParser";
+import { SourceAppKey } from "@/services/notificationImportRules";
+import { NOTIFICATION_IMPORT_DEBUG_ENABLED } from "@/services/notificationImportRuntimeState";
 import {
   appendNotificationImportDebugEvent,
   fetchVisibleWallets,
@@ -8,28 +12,15 @@ import {
   loadNotificationImportConfig,
   markSeenKey,
 } from "@/services/notificationImportStorage";
-import { NOTIFICATION_IMPORT_DEBUG_ENABLED } from "@/services/notificationImportRuntimeState";
+import { createOrUpdateTransaction } from "@/services/transactionService";
 import { devError, devLog, devWarn } from "@/utils/devLogger";
+import * as Linking from "expo-linking";
+import { Platform } from "react-native";
 import {
   getPermissionStatus,
   requestPermission,
   RNAndroidNotificationListenerHeadlessJsName,
 } from "react-native-android-notification-listener";
-import { Platform } from "react-native";
-import {
-  buildDescription,
-  buildDedupeKey,
-  detectDirection,
-  extractAmount,
-  extractCombinedText,
-  extractNotificationTime,
-  getSourceKey,
-  getSourceRule,
-  parseRawNotification,
-  resolveCategory,
-  resolveTransaction,
-} from "@/services/notificationImportParser";
-import { SourceAppKey, SourceRule } from "@/services/notificationImportRules";
 
 type ImportResult = { success: boolean; msg?: string };
 
@@ -69,7 +60,9 @@ export const getNotificationListenerStatus = async (): Promise<
   if (Platform.OS !== "android") return "unavailable";
 
   const status = await getPermissionStatus();
-  logImportDebug("permission", "Current notification listener status", { status });
+  logImportDebug("permission", "Current notification listener status", {
+    status,
+  });
   if (status === "authorized" || status === "denied" || status === "unknown") {
     return status;
   }
@@ -77,13 +70,39 @@ export const getNotificationListenerStatus = async (): Promise<
   return "unknown";
 };
 
-export const requestNotificationListenerPermission = async (): Promise<boolean> => {
-  if (Platform.OS !== "android") return false;
+export const requestNotificationListenerPermission =
+  async (): Promise<boolean> => {
+    if (Platform.OS !== "android") return false;
 
-  logImportDebug("permission", "Opening notification access settings");
-  requestPermission();
-  return true;
-};
+    logImportDebug("permission", "Opening notification access settings");
+
+    try {
+      await Linking.sendIntent(
+        "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS",
+      );
+      return true;
+    } catch (error) {
+      logImportDebug(
+        "permission",
+        "Expo intent launcher failed, falling back to native requestPermission",
+        error,
+        "warn",
+      );
+    }
+
+    try {
+      requestPermission();
+      return true;
+    } catch (error) {
+      logImportDebug(
+        "permission",
+        "Failed to open notification access settings",
+        error,
+        "error",
+      );
+      return false;
+    }
+  };
 
 const fetchWallets = async (uid: string) => {
   const wallets = await fetchVisibleWallets(uid);
@@ -110,19 +129,25 @@ const resolveWalletId = async (
       : "";
 
   if (mappedWalletId) {
-    const mappedWallet = wallets.find((wallet) => String(wallet.id) === mappedWalletId);
+    const mappedWallet = wallets.find(
+      (wallet) => String(wallet.id) === mappedWalletId,
+    );
     if (mappedWallet) return String(mappedWallet.id);
   }
 
   if (fallbackWalletId) {
-    const fallback = wallets.find((wallet) => String(wallet.id) === fallbackWalletId);
+    const fallback = wallets.find(
+      (wallet) => String(wallet.id) === fallbackWalletId,
+    );
     if (fallback) return String(fallback.id);
   }
 
   const brandMatch = wallets.find((wallet) => {
     const walletName = normalizeText(wallet.name);
-    return Boolean(normalizedLabel && walletName.includes(normalizedLabel)) ||
-      Boolean(normalizedHint && walletName.includes(normalizedHint));
+    return (
+      Boolean(normalizedLabel && walletName.includes(normalizedLabel)) ||
+      Boolean(normalizedHint && walletName.includes(normalizedHint))
+    );
   });
 
   if (brandMatch?.id) return String(brandMatch.id);
@@ -150,7 +175,8 @@ export const processNativeNotificationImport = async (
     level: "info",
     stage: "received",
     message: "Notification listener received payload",
-    data: typeof rawNotification === "string" ? rawNotification : rawNotification,
+    data:
+      typeof rawNotification === "string" ? rawNotification : rawNotification,
   });
 
   const payload = parseRawNotification(rawNotification);
@@ -172,7 +198,12 @@ export const processNativeNotificationImport = async (
 
   const resolved = resolveTransaction(payload);
   if (!resolved.shouldImport || !resolved.type || !resolved.amount) {
-    logImportDebug("resolve", resolved.reason ?? "Notification ignored", payload, "warn");
+    logImportDebug(
+      "resolve",
+      resolved.reason ?? "Notification ignored",
+      payload,
+      "warn",
+    );
     await appendNotificationImportDebugEvent(uid, {
       level: "warn",
       stage: "resolve",
@@ -328,9 +359,14 @@ export const registerAndroidNotificationHeadlessTask = (
   logImportDebug("startup", "Registering Android headless notification task");
   AppRegistry.registerHeadlessTask(
     RNAndroidNotificationListenerHeadlessJsName,
-    () => async ({ notification }: { notification: string | Record<string, unknown> }) => {
-      logImportDebug("headless", "Headless task invoked");
-      await processNativeNotificationImport(notification);
-    },
+    () =>
+      async ({
+        notification,
+      }: {
+        notification: string | Record<string, unknown>;
+      }) => {
+        logImportDebug("headless", "Headless task invoked");
+        await processNativeNotificationImport(notification);
+      },
   );
 };

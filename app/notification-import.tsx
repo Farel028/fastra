@@ -206,7 +206,7 @@ const NotificationImport = () => {
                 Auto import from bank and e-wallet notifications
               </Typo>
               <Typo size={13} color={colors.neutral400}>
-                When a notification contains transaction text, Entrack can parse
+                When a notification contains transaction text, Fastra can parse
                 it and create a transaction automatically.
               </Typo>
             </View>
@@ -379,7 +379,7 @@ const NotificationImport = () => {
                 1. Android listens for notifications after you grant access.
               </Typo>
               <Typo color={colors.neutral300}>
-                2. Entrack reads transaction words like transfer, debit, credit,
+                2. Fastra reads transaction words like transfer, debit, credit,
                 or payment.
               </Typo>
               <Typo color={colors.neutral300}>

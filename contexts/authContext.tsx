@@ -1,39 +1,65 @@
-import { auth, firestore } from "@/config/firebase";
+import { auth, firebaseConfig, firestore } from "@/config/firebase";
+import { setNotificationImportActiveUid } from "@/services/notificationImportService";
 import {
   addNotificationListeners,
   cancelDailyReminderNotifications,
   registerForPushNotificationsAsync,
-  scheduleDailyReminderNotifications,
   saveExpoPushToken,
+  scheduleDailyReminderNotifications,
 } from "@/services/notificationService";
-import { setNotificationImportActiveUid } from "@/services/notificationImportService";
 import {
   AuthActionCode,
   AuthActionResponse,
   AuthContextType,
   UserType,
 } from "@/types";
+import { devLog } from "@/utils/devLogger";
+import Constants from "expo-constants";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import {
+  ActionCodeSettings,
+  applyActionCode,
+  checkActionCode,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  parseActionCodeURL,
   sendEmailVerification,
   sendPasswordResetEmail,
-  signOut,
   signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
   User as FirebaseUser,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { devLog } from "@/utils/devLogger";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Alert } from "react-native";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 const EMAIL_VERIFICATION_RETRY_DELAYS_MS = [0, 2000, 5000];
+const VERIFY_EMAIL_OPERATION = "VERIFY_EMAIL";
+const EMAIL_ACTION_CONTINUE_URL = `https://${firebaseConfig.authDomain}/auth-complete`;
+const USERNAME_PATTERN = /^[a-z0-9._]{3,20}$/;
 
 type EmailVerificationState = "verified" | "unverified" | "unknown";
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizeUsername = (value: string): string =>
+  String(value ?? "").trim().toLowerCase();
+
+const isEmailIdentifier = (value: string): boolean => /\S+@\S+\.\S+/.test(value.trim());
+
+const isValidUsername = (value: string): boolean =>
+  USERNAME_PATTERN.test(normalizeUsername(value));
 
 const mapAuthError = (error: any): { msg: string; code: AuthActionCode } => {
   const code = String(error?.code ?? "");
@@ -52,6 +78,10 @@ const mapAuthError = (error: any): { msg: string; code: AuthActionCode } => {
 
   if (code.includes("user-not-found")) {
     return { code: "USER_NOT_FOUND", msg: "Email not found." };
+  }
+
+  if (code.includes("user-disabled")) {
+    return { code: "INVALID_CREDENTIALS", msg: "Account is disabled." };
   }
 
   if (code.includes("network-request-failed")) {
@@ -87,12 +117,174 @@ const resolveEmailVerificationState = async (
   return "unknown";
 };
 
+const buildEmailVerificationActionCodeSettings = (): ActionCodeSettings => {
+  const actionCodeSettings: ActionCodeSettings = {
+    url: EMAIL_ACTION_CONTINUE_URL,
+    handleCodeInApp: true,
+  };
+
+  const androidPackageName = Constants.expoConfig?.android?.package;
+  if (androidPackageName) {
+    actionCodeSettings.android = {
+      packageName: androidPackageName,
+      installApp: true,
+    };
+  }
+
+  const iosBundleId = Constants.expoConfig?.ios?.bundleIdentifier;
+  if (iosBundleId) {
+    actionCodeSettings.iOS = {
+      bundleId: iosBundleId,
+    };
+  }
+
+  return actionCodeSettings;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [user, setUser] = useState<UserType>(null);
   const router = useRouter();
   const suppressAuthRedirectRef = useRef(false);
+  const handledEmailActionCodesRef = useRef<Set<string>>(new Set());
+
+  const updateUserData = useCallback(async (uid: string) => {
+    try {
+      const docRef = doc(firestore, "users", uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const userData: UserType = {
+          uid: data?.uid,
+          email: data.email || null,
+          name: data.name || data.username || null,
+          username: data.username || null,
+          image: data.image || null,
+        };
+        setUser({ ...userData });
+      }
+    } catch (error: any) {
+      devLog("error: ", error);
+    }
+  }, []);
+
+  const resolveEmailFromIdentifier = useCallback(
+    async (
+      identifier: string,
+    ): Promise<{
+      success: boolean;
+      email?: string;
+      msg?: string;
+      code?: AuthActionCode;
+    }> => {
+      const normalizedIdentifier = String(identifier ?? "").trim();
+      if (!normalizedIdentifier) {
+        return {
+          success: false,
+          code: "INVALID_CREDENTIALS",
+          msg: "Username or email is required.",
+        };
+      }
+
+      if (isEmailIdentifier(normalizedIdentifier)) {
+        return { success: true, email: normalizedIdentifier };
+      }
+
+      const normalizedUsername = normalizeUsername(normalizedIdentifier);
+      if (!isValidUsername(normalizedUsername)) {
+        return {
+          success: false,
+          code: "INVALID_USERNAME",
+          msg: "Username must be 3-20 chars and only use letters, numbers, dot, or underscore.",
+        };
+      }
+
+      const usernameDoc = await getDoc(
+        doc(firestore, "usernames", normalizedUsername),
+      );
+      if (!usernameDoc.exists()) {
+        return {
+          success: false,
+          code: "USER_NOT_FOUND",
+          msg: "Username not found.",
+        };
+      }
+
+      const data = usernameDoc.data();
+      const email = typeof data?.email === "string" ? data.email.trim() : "";
+      if (!email) {
+        return {
+          success: false,
+          code: "INVALID_CREDENTIALS",
+          msg: "This account is missing an email address.",
+        };
+      }
+
+      return { success: true, email };
+    },
+    [],
+  );
+
+  const ensureUsernameAvailable = useCallback(async (username: string) => {
+    const usernameDoc = await getDoc(
+      doc(firestore, "usernames", username),
+    );
+    return !usernameDoc.exists();
+  }, []);
+
+  const handleEmailActionLink = useCallback(
+    async (url: string): Promise<boolean> => {
+      const action = parseActionCodeURL(url);
+      if (!action || action.operation !== VERIFY_EMAIL_OPERATION) {
+        return false;
+      }
+
+      const actionKey = `${action.operation}:${action.code}`;
+      if (handledEmailActionCodesRef.current.has(actionKey)) {
+        return true;
+      }
+
+      handledEmailActionCodesRef.current.add(actionKey);
+
+      try {
+        await checkActionCode(auth, action.code);
+        await applyActionCode(auth, action.code);
+
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          await currentUser.reload();
+          if (currentUser.uid) {
+            await updateUserData(currentUser.uid);
+          }
+        }
+
+        Alert.alert(
+          "Email verified",
+          "Your email has been verified. You can continue in Fastra.",
+        );
+
+        if (auth.currentUser?.emailVerified) {
+          router.replace("/(tabs)");
+        } else {
+          router.replace("/(auth)/login");
+        }
+
+        return true;
+      } catch (error: any) {
+        handledEmailActionCodesRef.current.delete(actionKey);
+        devLog("Failed to apply email verification action: ", error);
+        Alert.alert(
+          "Verification failed",
+          error?.message || "This verification link is invalid or has expired.",
+        );
+        router.replace("/(auth)/login");
+        return true;
+      }
+    },
+    [router, updateUserData],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -120,9 +312,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           }
 
           setUser({
-            uid: firebaseUser?.uid,
-            email: firebaseUser?.email,
-            name: firebaseUser?.displayName,
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName,
+            username: firebaseUser.displayName,
           });
           void updateUserData(firebaseUser.uid);
           router.replace("/(tabs)");
@@ -144,7 +337,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       isMounted = false;
       unsub();
     };
-  }, [router]);
+  }, [router, updateUserData]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const processUrl = async (url: string | null) => {
+      if (!isMounted || !url) return;
+
+      try {
+        const handled = await handleEmailActionLink(url);
+        if (handled) {
+          devLog("Handled email action URL.", url);
+        }
+      } catch (error) {
+        devLog("Failed to process incoming auth URL: ", error);
+      }
+    };
+
+    void Linking.getInitialURL().then(processUrl);
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      void processUrl(url);
+    });
+
+    return () => {
+      isMounted = false;
+      sub.remove();
+    };
+  }, [handleEmailActionLink]);
 
   useEffect(() => {
     const removeListeners = addNotificationListeners();
@@ -178,11 +398,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [user?.uid, user?.name]);
 
   const login = async (
-    email: string,
+    identifier: string,
     password: string,
   ): Promise<AuthActionResponse> => {
     try {
-      const response = await signInWithEmailAndPassword(auth, email, password);
+      const resolved = await resolveEmailFromIdentifier(identifier);
+      if (!resolved.success || !resolved.email) {
+        return {
+          success: false,
+          msg: resolved.msg,
+          code: resolved.code,
+        };
+      }
+
+      const response = await signInWithEmailAndPassword(
+        auth,
+        resolved.email,
+        password,
+      );
+
       if (!response.user.emailVerified) {
         const verificationState = await resolveEmailVerificationState(
           response.user,
@@ -214,24 +448,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: false, msg: parsed.msg, code: parsed.code };
     }
   };
+
   const register = async (
+    username: string,
     email: string,
     password: string,
-    name: string,
   ): Promise<AuthActionResponse> => {
     try {
+      const normalizedEmail = String(email ?? "").trim();
+      const normalizedUsername = normalizeUsername(username);
+
+      if (!normalizedEmail) {
+        return {
+          success: false,
+          code: "INVALID_EMAIL",
+          msg: "Email is required.",
+        };
+      }
+
+      if (!isValidUsername(normalizedUsername)) {
+        return {
+          success: false,
+          code: "INVALID_USERNAME",
+          msg: "Username must be 3-20 chars and only use letters, numbers, dot, or underscore.",
+        };
+      }
+
+      const usernameAvailable = await ensureUsernameAvailable(normalizedUsername);
+      if (!usernameAvailable) {
+        return {
+          success: false,
+          code: "USERNAME_IN_USE",
+          msg: "Username is already in use.",
+        };
+      }
+
       const response = await createUserWithEmailAndPassword(
         auth,
-        email,
+        normalizedEmail,
         password,
       );
-      await setDoc(doc(firestore, "users", response?.user?.uid), {
-        name,
-        email,
-        uid: response?.user?.uid,
+
+      await updateProfile(response.user, {
+        displayName: normalizedUsername,
       });
-      await sendEmailVerification(response.user);
+
+      await setDoc(doc(firestore, "users", response.user.uid), {
+        uid: response.user.uid,
+        email: normalizedEmail,
+        name: normalizedUsername,
+        username: normalizedUsername,
+      });
+
+      await setDoc(doc(firestore, "usernames", normalizedUsername), {
+        uid: response.user.uid,
+        email: normalizedEmail,
+        username: normalizedUsername,
+      });
+
+      await sendEmailVerification(
+        response.user,
+        buildEmailVerificationActionCodeSettings(),
+      );
       await signOut(auth);
+
       return {
         success: true,
         msg: "Account created. Please verify your email before logging in.",
@@ -259,7 +539,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const resendVerificationEmail = async (
-    email: string,
+    identifier: string,
     password: string,
   ): Promise<AuthActionResponse> => {
     let signedInTemporarily = false;
@@ -267,20 +547,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       suppressAuthRedirectRef.current = true;
 
-      const normalizedEmail = String(email ?? "").trim();
+      const normalizedIdentifier = String(identifier ?? "").trim();
       const normalizedPassword = String(password ?? "");
 
-      if (!normalizedEmail || !normalizedPassword) {
+      if (!normalizedIdentifier || !normalizedPassword) {
         return {
           success: false,
-          msg: "Email and password are required to resend verification email.",
+          msg: "Username/email and password are required to resend verification email.",
           code: "INVALID_CREDENTIALS",
+        };
+      }
+
+      const resolved = await resolveEmailFromIdentifier(normalizedIdentifier);
+      if (!resolved.success || !resolved.email) {
+        return {
+          success: false,
+          msg: resolved.msg,
+          code: resolved.code,
         };
       }
 
       const response = await signInWithEmailAndPassword(
         auth,
-        normalizedEmail,
+        resolved.email,
         normalizedPassword,
       );
       signedInTemporarily = true;
@@ -293,7 +582,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       }
 
-      await sendEmailVerification(response.user);
+      await sendEmailVerification(
+        response.user,
+        buildEmailVerificationActionCodeSettings(),
+      );
 
       return {
         success: true,
@@ -334,26 +626,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (error: any) {
       const parsed = mapAuthError(error);
       return { success: false, msg: parsed.msg, code: parsed.code };
-    }
-  };
-
-  const updateUserData = async (uid: string) => {
-    try {
-      const docRef = doc(firestore, "users", uid);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const userData: UserType = {
-          uid: data?.uid,
-          email: data.email || null,
-          name: data.name || null,
-          image: data.image || null,
-        };
-        setUser({ ...userData });
-      }
-    } catch (error: any) {
-      devLog("error: ", error);
     }
   };
 
@@ -398,6 +670,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         uid: refreshedUser.uid,
         email: refreshedUser.email,
         name: refreshedUser.displayName,
+        username: refreshedUser.displayName,
       });
 
       await updateUserData(refreshedUser.uid);
