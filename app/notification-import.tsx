@@ -8,26 +8,29 @@ import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
 import {
   NOTIFICATION_SOURCE_RULES,
+  NotificationImportStatus,
+  PendingNotificationImport,
   SourceAppKey,
+  SourceRule,
   getNotificationListenerStatus,
   loadNotificationImportConfig,
-  NotificationImportStatus,
+  loadPendingNotificationImports,
   requestNotificationListenerPermission,
   saveNotificationImportConfig,
 } from "@/services/notificationImportService";
 import { filterVisibleWallets } from "@/services/walletService";
 import { WalletType } from "@/types";
 import { verticalScale } from "@/utils/styling";
-import { useRouter } from "expo-router";
+import { Image } from "expo-image";
 import { orderBy, where } from "firebase/firestore";
 import * as Icons from "phosphor-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -46,57 +49,180 @@ const statusColor: Record<NotificationImportStatus, string> = {
   unavailable: colors.neutral400,
 };
 
+const LOGO_DEV_PUBLIC_KEY = "pk_F2FvW5A7T-O4VDTvIMGxLQ";
+const getLogoDevUrl = (domain: string) =>
+  `https://img.logo.dev/${domain}?token=${LOGO_DEV_PUBLIC_KEY}&size=128&format=png`;
+
+const normalizeSource = (source: string) =>
+  source.trim().replace(/\s+/g, " ").toLowerCase();
+
+const normalizeBlockedSources = (sources: string[] = []) =>
+  Array.from(
+    new Set(
+      sources.map((source) => normalizeSource(String(source ?? ""))).filter(Boolean),
+    ),
+  );
+
+type SourcePreset = {
+  id: string;
+  label: string;
+  domain: string;
+  category: "bank" | "ewallet";
+};
+
+type SourceOption = SourcePreset & {
+  key: SourceAppKey;
+  image: string;
+  rule: SourceRule;
+};
+
+const SOURCE_PRESETS: SourcePreset[] = [
+  { id: "bca", label: "BCA", domain: "bca.co.id", category: "bank" },
+  { id: "bri", label: "BRI", domain: "bri.co.id", category: "bank" },
+  {
+    id: "mandiri",
+    label: "Mandiri",
+    domain: "bankmandiri.co.id",
+    category: "bank",
+  },
+  { id: "bni", label: "BNI", domain: "bni.co.id", category: "bank" },
+  { id: "btn", label: "BTN", domain: "btn.co.id", category: "bank" },
+  { id: "bsi", label: "BSI", domain: "bankbsi.co.id", category: "bank" },
+  {
+    id: "cimb",
+    label: "CIMB Niaga",
+    domain: "cimbniaga.co.id",
+    category: "bank",
+  },
+  {
+    id: "danamon",
+    label: "Danamon",
+    domain: "danamon.co.id",
+    category: "bank",
+  },
+  {
+    id: "permata",
+    label: "PermataBank",
+    domain: "permatabank.com",
+    category: "bank",
+  },
+  {
+    id: "maybank",
+    label: "Maybank",
+    domain: "maybank.co.id",
+    category: "bank",
+  },
+  { id: "ocbc", label: "OCBC", domain: "ocbc.id", category: "bank" },
+  { id: "uob", label: "UOB", domain: "uob.co.id", category: "bank" },
+  { id: "hsbc", label: "HSBC", domain: "hsbc.co.id", category: "bank" },
+  { id: "dbs", label: "DBS", domain: "dbs.id", category: "bank" },
+  { id: "panin", label: "Panin", domain: "panin.co.id", category: "bank" },
+  { id: "mega", label: "Bank Mega", domain: "bankmega.com", category: "bank" },
+  {
+    id: "muamalat",
+    label: "Muamalat",
+    domain: "bankmuamalat.co.id",
+    category: "bank",
+  },
+  { id: "jago", label: "Bank Jago", domain: "jago.com", category: "bank" },
+  { id: "jenius", label: "Jenius", domain: "jenius.com", category: "bank" },
+  {
+    id: "seabank",
+    label: "SeaBank",
+    domain: "seabank.co.id",
+    category: "bank",
+  },
+  { id: "neo", label: "Bank Neo", domain: "neobank.id", category: "bank" },
+  {
+    id: "allobank",
+    label: "Allo Bank",
+    domain: "allobank.com",
+    category: "bank",
+  },
+  { id: "blu", label: "blu", domain: "bcadigital.co.id", category: "bank" },
+  {
+    id: "linebank",
+    label: "LINE Bank",
+    domain: "linebank.co.id",
+    category: "bank",
+  },
+  { id: "gopay", label: "GoPay", domain: "gopay.co.id", category: "ewallet" },
+  { id: "ovo", label: "OVO", domain: "ovo.id", category: "ewallet" },
+  { id: "dana", label: "DANA", domain: "dana.id", category: "ewallet" },
+  {
+    id: "shopeepay",
+    label: "ShopeePay",
+    domain: "shopee.co.id",
+    category: "ewallet",
+  },
+  {
+    id: "linkaja",
+    label: "LinkAja",
+    domain: "linkaja.id",
+    category: "ewallet",
+  },
+  {
+    id: "astrapay",
+    label: "AstraPay",
+    domain: "astrapay.com",
+    category: "ewallet",
+  },
+  { id: "doku", label: "DOKU", domain: "doku.com", category: "ewallet" },
+];
+
+const SOURCE_OPTIONS: SourceOption[] = SOURCE_PRESETS.map((source) => {
+  const rule = NOTIFICATION_SOURCE_RULES.find((item) => item.key === source.id);
+  if (!rule) {
+    throw new Error(`Missing notification source rule for ${source.id}`);
+  }
+
+  return {
+    ...source,
+    key: rule.key,
+    image: getLogoDevUrl(source.domain),
+    rule,
+  };
+});
+
+const SOURCE_RULES = SOURCE_OPTIONS.map((item) => item.rule);
+
+const SOURCE_GROUPS = [
+  {
+    key: "bank",
+    title: "Bank",
+    options: SOURCE_OPTIONS.filter((item) => item.category === "bank"),
+  },
+  {
+    key: "ewallet",
+    title: "E-Wallet",
+    options: SOURCE_OPTIONS.filter((item) => item.category === "ewallet"),
+  },
+];
+
+const getLegacySourceTokens = (source: SourceRule) =>
+  [source.key, source.label, ...source.aliases].map(normalizeSource).filter(Boolean);
+
+const getSourceBlockToken = (source: SourceRule) => normalizeSource(source.key);
+
 const NotificationImport = () => {
   const { user } = useAuth();
-  const router = useRouter();
   const [enabled, setEnabled] = useState(true);
   const [fallbackWalletId, setFallbackWalletId] = useState("");
   const [sourceWalletMappings, setSourceWalletMappings] = useState<
     Partial<Record<SourceAppKey, string>>
   >({});
+  const [blockedSourceApps, setBlockedSourceApps] = useState<string[]>([]);
+  const [blockSourceInput, setBlockSourceInput] = useState("");
+  const [pendingImports, setPendingImports] = useState<
+    PendingNotificationImport[]
+  >([]);
   const [permissionStatus, setPermissionStatus] =
     useState<NotificationImportStatus>("unknown");
   const [loadingConfig, setLoadingConfig] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [walletPickerVisible, setWalletPickerVisible] = useState(false);
+  const [sourceRulesVisible, setSourceRulesVisible] = useState(false);
+  const [blockSourceVisible, setBlockSourceVisible] = useState(false);
   const [mappingTarget, setMappingTarget] = useState<SourceAppKey | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      if (!user?.uid) {
-        if (mounted) {
-          setEnabled(true);
-          setFallbackWalletId("");
-          setSourceWalletMappings({});
-          setPermissionStatus("unknown");
-          setLoadingConfig(false);
-        }
-        return;
-      }
-
-      setLoadingConfig(true);
-      const [config, status] = await Promise.all([
-        loadNotificationImportConfig(user.uid),
-        getNotificationListenerStatus(),
-      ]);
-
-      if (!mounted) return;
-
-      setEnabled(config.enabled);
-      setFallbackWalletId(config.fallbackWalletId ?? "");
-      setSourceWalletMappings(config.sourceWalletMappings ?? {});
-      setPermissionStatus(status);
-      setLoadingConfig(false);
-    };
-
-    load();
-
-    return () => {
-      mounted = false;
-    };
-  }, [user?.uid]);
 
   const walletConstraints = useMemo(
     () =>
@@ -125,45 +251,169 @@ const NotificationImport = () => {
     return map;
   }, [wallets]);
 
-  const openWalletPicker = (sourceKey: SourceAppKey) => {
-    setMappingTarget(sourceKey);
-    setWalletPickerVisible(true);
+  const mappedCount = SOURCE_RULES.filter(
+    (rule) => sourceWalletMappings[rule.key],
+  ).length;
+  const blockedCount = blockedSourceApps.length;
+  const fallbackWalletName = fallbackWalletId
+    ? (walletNameById.get(fallbackWalletId) ?? "Unknown wallet")
+    : "Auto match only";
+
+  const pendingSourceSuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          pendingImports
+            .flatMap((item) => [item.sourceApp, item.sourceLabel])
+            .map((item) => normalizeSource(item ?? ""))
+            .filter(Boolean),
+        ),
+      ).filter((source) => !blockedSourceApps.includes(source)),
+    [blockedSourceApps, pendingImports],
+  );
+
+  const persistConfig = useCallback(
+    async (next?: {
+      enabled?: boolean;
+      fallbackWalletId?: string;
+      sourceWalletMappings?: Partial<Record<SourceAppKey, string>>;
+      blockedSourceApps?: string[];
+    }) => {
+      if (!user?.uid) return;
+
+      try {
+        const current = await loadNotificationImportConfig(user.uid);
+        await saveNotificationImportConfig(user.uid, {
+          enabled: next?.enabled ?? current.enabled,
+          fallbackWalletId: (next?.fallbackWalletId ?? current.fallbackWalletId) || null,
+          sourceWalletMappings:
+            next?.sourceWalletMappings ?? current.sourceWalletMappings ?? {},
+          blockedSourceApps: normalizeBlockedSources(
+            next?.blockedSourceApps ?? current.blockedSourceApps ?? [],
+          ),
+        });
+      } catch (error: any) {
+        Alert.alert("Notification Import", error?.message || "Failed to save.");
+      }
+    },
+    [user?.uid],
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      if (!user?.uid) {
+        if (mounted) {
+          setEnabled(true);
+          setFallbackWalletId("");
+          setSourceWalletMappings({});
+          setBlockedSourceApps([]);
+          setPendingImports([]);
+          setPermissionStatus("unknown");
+          setLoadingConfig(false);
+        }
+        return;
+      }
+
+      setLoadingConfig(true);
+      const [config, status, pending] = await Promise.all([
+        loadNotificationImportConfig(user.uid),
+        getNotificationListenerStatus(),
+        loadPendingNotificationImports(user.uid, 30),
+      ]);
+
+      if (!mounted) return;
+
+      await saveNotificationImportConfig(user.uid, {
+        enabled: config.enabled,
+        fallbackWalletId: config.fallbackWalletId,
+        sourceWalletMappings: config.sourceWalletMappings ?? {},
+        blockedSourceApps: normalizeBlockedSources(config.blockedSourceApps ?? []),
+      });
+
+      if (!mounted) return;
+
+      setEnabled(config.enabled);
+      setFallbackWalletId(config.fallbackWalletId ?? "");
+      setSourceWalletMappings(config.sourceWalletMappings ?? {});
+      setBlockedSourceApps(normalizeBlockedSources(config.blockedSourceApps ?? []));
+      setPendingImports(pending);
+      setPermissionStatus(status);
+      setLoadingConfig(false);
+    };
+
+    void load();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.uid]);
+
+  const setEnabledAndSave = (value: boolean) => {
+    setEnabled(value);
+    void persistConfig({ enabled: value });
+  };
+
+  const setFallbackWalletAndSave = (walletId: string) => {
+    setFallbackWalletId(walletId);
+    void persistConfig({ fallbackWalletId: walletId });
   };
 
   const setSourceWallet = (sourceKey: SourceAppKey, walletId: string) => {
-    setSourceWalletMappings((prev) => ({
-      ...prev,
-      [sourceKey]: walletId,
-    }));
+    setSourceWalletMappings((prev) => {
+      const next = { ...prev };
+      if (walletId) next[sourceKey] = walletId;
+      else delete next[sourceKey];
+      void persistConfig({ sourceWalletMappings: next });
+      return next;
+    });
   };
 
-  const formatWalletMeta = (wallet: WalletType) => {
-    const meta: string[] = [];
-    if (wallet.hidden) meta.push("Hidden");
-    if (wallet.isSystem) meta.push("System");
-    meta.push("Visible wallet");
-    return meta.join(" · ");
+  const addBlockedSource = (source: string) => {
+    const normalized = normalizeSource(source);
+    if (!normalized) return;
+
+    setBlockedSourceApps((prev) => {
+      const normalizedPrev = normalizeBlockedSources(prev);
+      const next = normalizedPrev.includes(normalized)
+        ? normalizedPrev
+        : [...normalizedPrev, normalized];
+      void persistConfig({ blockedSourceApps: next });
+      return next;
+    });
+    setBlockSourceInput("");
   };
 
-  const save = async () => {
-    if (!user?.uid) {
-      Alert.alert("Notification Import", "Please login first.");
-      return;
-    }
+  const removeBlockedSource = (source: string) => {
+    setBlockedSourceApps((prev) => {
+      const normalized = normalizeSource(source);
+      const next = normalizeBlockedSources(prev).filter((item) => item !== normalized);
+      void persistConfig({ blockedSourceApps: next });
+      return next;
+    });
+  };
 
-    setSaving(true);
-    try {
-      await saveNotificationImportConfig(user.uid, {
-        enabled,
-        fallbackWalletId: fallbackWalletId || null,
-        sourceWalletMappings,
-      });
-      Alert.alert("Notification Import", "Settings saved.");
-    } catch (error: any) {
-      Alert.alert("Notification Import", error?.message || "Failed to save.");
-    } finally {
-      setSaving(false);
-    }
+  const isRuleBlocked = (source: SourceRule) => {
+    const tokens = getLegacySourceTokens(source);
+    const blockedSet = new Set(normalizeBlockedSources(blockedSourceApps));
+    return tokens.some((token) => blockedSet.has(token));
+  };
+
+  const toggleRuleBlock = (source: SourceRule) => {
+    const blockToken = getSourceBlockToken(source);
+    const cleanupTokens = getLegacySourceTokens(source);
+    const blockedSet = new Set(normalizeBlockedSources(blockedSourceApps));
+    const blocked = cleanupTokens.some((token) => blockedSet.has(token));
+
+    setBlockedSourceApps((prev) => {
+      const normalizedPrev = normalizeBlockedSources(prev);
+      const next = blocked
+        ? normalizedPrev.filter((item) => !cleanupTokens.includes(item))
+        : Array.from(new Set([...normalizedPrev, blockToken]));
+      void persistConfig({ blockedSourceApps: next });
+      return next;
+    });
   };
 
   const requestPermission = async () => {
@@ -178,6 +428,82 @@ const NotificationImport = () => {
 
     const nextStatus = await getNotificationListenerStatus();
     setPermissionStatus(nextStatus);
+  };
+
+  const renderSourceRow = (source: SourceOption) => {
+    const mappedId = sourceWalletMappings[source.key] ?? "";
+    const mappedName = mappedId
+      ? (walletNameById.get(mappedId) ?? "Unknown wallet")
+      : "Auto match";
+    const blocked = isRuleBlocked(source.rule);
+
+    return (
+      <View
+        key={source.key}
+        style={[styles.sourceRow, blocked && styles.sourceRowBlocked]}
+      >
+        <TouchableOpacity
+          activeOpacity={0.88}
+          style={styles.sourceRowMain}
+          onPress={() => {
+            setMappingTarget(source.key);
+            setWalletPickerVisible(true);
+          }}
+        >
+          <View style={styles.logoWrap}>
+            <Image
+              source={source.image}
+              style={styles.logoImage}
+              contentFit="contain"
+            />
+          </View>
+
+          <View style={styles.sourceText}>
+            <View style={styles.sourceTitleRow}>
+              <Typo fontWeight={"900"} numberOfLines={1}>
+                {source.label}
+              </Typo>
+              {blocked ? (
+                <View style={styles.blockedPill}>
+                  <Typo size={10} fontWeight={"900"} color={colors.rose}>
+                    BLOCKED
+                  </Typo>
+                </View>
+              ) : null}
+            </View>
+            <Typo size={12} color={colors.neutral400} numberOfLines={1}>
+              {blocked ? "Notifications ignored" : mappedName}
+            </Typo>
+          </View>
+
+          <Icons.CaretRightIcon
+            size={verticalScale(18)}
+            color={colors.neutral400}
+            weight="bold"
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.88}
+          style={[styles.sourceBlockBtn, blocked && styles.sourceUnblockBtn]}
+          onPress={() => toggleRuleBlock(source.rule)}
+        >
+          {blocked ? (
+            <Icons.CheckIcon
+              size={verticalScale(18)}
+              color={colors.black}
+              weight="bold"
+            />
+          ) : (
+            <Icons.ProhibitIcon
+              size={verticalScale(18)}
+              color={colors.rose}
+              weight="bold"
+            />
+          )}
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
@@ -195,34 +521,36 @@ const NotificationImport = () => {
         >
           <View style={styles.hero}>
             <View style={styles.heroIcon}>
-              <Icons.BellIcon
-                size={verticalScale(26)}
+              <Icons.BellRingingIcon
+                size={verticalScale(25)}
                 color={colors.black}
                 weight="fill"
               />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, gap: spacingY._5 }}>
               <Typo size={18} fontWeight={"900"}>
-                Auto import from bank and e-wallet notifications
+                Notification rules
               </Typo>
-              <Typo size={13} color={colors.neutral400}>
-                When a notification contains transaction text, Fastra can parse
-                it and create a transaction automatically.
+              <Typo size={12} color={colors.neutral400}>
+                Auto import stays lean: source rules and block list live in
+                sheets.
               </Typo>
             </View>
           </View>
 
           <View style={styles.card}>
             <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Typo fontWeight={"800"}>Enable auto import</Typo>
+              <View style={{ flex: 1, gap: spacingY._5 }}>
+                <Typo fontWeight={"900"} size={16}>
+                  Import pipeline
+                </Typo>
                 <Typo size={12} color={colors.neutral400}>
-                  Turn this on to allow parsed notifications to be saved.
+                  Parsed notifications go to inbox review first.
                 </Typo>
               </View>
               <Switch
                 value={enabled}
-                onValueChange={setEnabled}
+                onValueChange={setEnabledAndSave}
                 trackColor={{ false: colors.neutral700, true: colors.primary }}
                 thumbColor={colors.white}
               />
@@ -231,18 +559,8 @@ const NotificationImport = () => {
             <View style={styles.divider} />
 
             <View style={styles.row}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, gap: spacingY._5 }}>
                 <Typo fontWeight={"800"}>Android permission</Typo>
-                <Typo size={12} color={colors.neutral400}>
-                  Status:{" "}
-                  <Typo
-                    size={12}
-                    fontWeight={"800"}
-                    color={statusColor[permissionStatus]}
-                  >
-                    {statusLabel[permissionStatus]}
-                  </Typo>
-                </Typo>
               </View>
 
               <TouchableOpacity
@@ -251,59 +569,87 @@ const NotificationImport = () => {
                 onPress={requestPermission}
               >
                 <Typo fontWeight={"900"} color={colors.black}>
-                  Grant access
+                  Grant
                 </Typo>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.card}>
-            <Typo fontWeight={"900"} size={16}>
-              Wallet mapping by source
-            </Typo>
-            <Typo size={12} color={colors.neutral400}>
-              Pick one wallet for each bank or e-wallet source. This overrides
-              the fallback wallet when available.
-            </Typo>
+          <View style={styles.menuCard}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={styles.menuRow}
+              onPress={() => setSourceRulesVisible(true)}
+            >
+              <View style={styles.menuIcon}>
+                <Icons.BankIcon
+                  size={verticalScale(21)}
+                  color={colors.black}
+                  weight="fill"
+                />
+              </View>
+              <View style={{ flex: 1, gap: spacingY._5 }}>
+                <Typo fontWeight={"900"}>Source rules</Typo>
+                <Typo size={12} color={colors.neutral400}>
+                  {mappedCount}/{SOURCE_RULES.length} mapped
+                </Typo>
+              </View>
+              <Icons.CaretRightIcon
+                size={verticalScale(18)}
+                color={colors.neutral400}
+                weight="bold"
+              />
+            </TouchableOpacity>
 
-            <View style={{ marginTop: spacingY._12, gap: spacingY._10 }}>
-              {NOTIFICATION_SOURCE_RULES.map((source) => {
-                const mappedId = sourceWalletMappings[source.key] ?? "";
-                const mappedName = mappedId
-                  ? walletNameById.get(mappedId) ?? "Unknown wallet"
-                  : "Auto match";
+            <View style={styles.divider} />
 
-                return (
-                  <TouchableOpacity
-                    key={source.key}
-                    activeOpacity={0.88}
-                    style={styles.mappingRow}
-                    onPress={() => openWalletPicker(source.key)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Typo fontWeight={"800"}>{source.label}</Typo>
-                      <Typo size={12} color={colors.neutral400}>
-                        {mappedName}
-                      </Typo>
-                    </View>
-                    <Icons.CaretRightIcon
-                      size={verticalScale(18)}
-                      color={colors.neutral300}
-                      weight="bold"
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={styles.menuRow}
+              onPress={() => setBlockSourceVisible(true)}
+            >
+              <View style={[styles.menuIcon, styles.blockMenuIcon]}>
+                <Icons.ProhibitIcon
+                  size={verticalScale(21)}
+                  color={colors.rose}
+                  weight="bold"
+                />
+              </View>
+              <View style={{ flex: 1, gap: spacingY._5 }}>
+                <Typo fontWeight={"900"}>Block source</Typo>
+                <Typo size={12} color={colors.neutral400}>
+                  {blockedCount
+                    ? `${blockedCount} sources blocked`
+                    : "No blocked source"}
+                </Typo>
+              </View>
+              <Icons.CaretRightIcon
+                size={verticalScale(18)}
+                color={colors.neutral400}
+                weight="bold"
+              />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.card}>
-            <Typo fontWeight={"900"} size={16}>
-              Fallback wallet
-            </Typo>
-            <Typo size={12} color={colors.neutral400}>
-              If source mapping and auto matching fail, this wallet will be used.
-            </Typo>
+            <View style={styles.sectionHeader}>
+              <View style={{ flex: 1, gap: spacingY._5 }}>
+                <Typo fontWeight={"900"} size={16}>
+                  Fallback wallet
+                </Typo>
+                <Typo size={12} color={colors.neutral400}>
+                  Used only when source mapping and auto matching fail.
+                </Typo>
+              </View>
+              <Typo
+                size={12}
+                fontWeight={"800"}
+                color={colors.neutral300}
+                numberOfLines={1}
+              >
+                {fallbackWalletName}
+              </Typo>
+            </View>
 
             <View style={{ marginTop: spacingY._12, gap: spacingY._10 }}>
               <TouchableOpacity
@@ -312,7 +658,7 @@ const NotificationImport = () => {
                   styles.walletItem,
                   fallbackWalletId === "" && styles.walletItemActive,
                 ]}
-                onPress={() => setFallbackWalletId("")}
+                onPress={() => setFallbackWalletAndSave("")}
               >
                 <View style={{ flex: 1 }}>
                   <Typo fontWeight={"800"}>Auto match only</Typo>
@@ -333,7 +679,7 @@ const NotificationImport = () => {
                       styles.walletItem,
                       active && styles.walletItemActive,
                     ]}
-                    onPress={() => setFallbackWalletId(id)}
+                    onPress={() => setFallbackWalletAndSave(id)}
                   >
                     <View style={{ flex: 1 }}>
                       <Typo fontWeight={"800"} numberOfLines={1}>
@@ -369,50 +715,147 @@ const NotificationImport = () => {
               )}
             </View>
           </View>
-
-          <View style={styles.card}>
-            <Typo fontWeight={"900"} size={16}>
-              How it works
-            </Typo>
-            <View style={styles.bulletList}>
-              <Typo color={colors.neutral300}>
-                1. Android listens for notifications after you grant access.
-              </Typo>
-              <Typo color={colors.neutral300}>
-                2. Fastra reads transaction words like transfer, debit, credit,
-                or payment.
-              </Typo>
-              <Typo color={colors.neutral300}>
-                3. Matching text becomes a new transaction automatically.
-              </Typo>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.88}
-            style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-            onPress={save}
-            disabled={saving}
-          >
-            <Typo fontWeight={"900"} color={colors.black}>
-              {saving ? "Saving..." : "Save settings"}
-            </Typo>
-          </TouchableOpacity>
-
-          <Pressable onPress={() => router.back()}>
-            <Typo color={colors.neutral400} style={{ textAlign: "center" }}>
-              Back to settings
-            </Typo>
-          </Pressable>
         </ScrollView>
 
         <SheetModal
+          visible={sourceRulesVisible}
+          title="Source Rules"
+          onClose={() => setSourceRulesVisible(false)}
+        >
+          <ScrollView
+            style={{ maxHeight: verticalScale(470) }}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {SOURCE_GROUPS.map((group) => (
+              <View key={group.key} style={styles.sourceSection}>
+                <Typo
+                  size={12}
+                  fontWeight={"900"}
+                  color={colors.neutral400}
+                  style={styles.sourceSectionTitle}
+                >
+                  {group.title}
+                </Typo>
+                {group.options.map(renderSourceRow)}
+              </View>
+            ))}
+          </ScrollView>
+        </SheetModal>
+
+        <SheetModal
+          visible={blockSourceVisible}
+          title="Block Source"
+          onClose={() => setBlockSourceVisible(false)}
+        >
+          <ScrollView
+            style={{ maxHeight: verticalScale(470) }}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.blockInputRow}>
+              <TextInput
+                value={blockSourceInput}
+                onChangeText={setBlockSourceInput}
+                placeholder="com.whatsapp or Shopee"
+                placeholderTextColor={colors.neutral500}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.blockInput}
+              />
+              <TouchableOpacity
+                activeOpacity={0.88}
+                style={styles.addBlockBtn}
+                onPress={() => addBlockedSource(blockSourceInput)}
+              >
+                <Icons.PlusIcon
+                  size={verticalScale(18)}
+                  color={colors.black}
+                  weight="bold"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {pendingSourceSuggestions.length > 0 ? (
+              <View style={styles.suggestionBlock}>
+                <Typo size={12} fontWeight={"800"} color={colors.neutral300}>
+                  From inbox
+                </Typo>
+                <View style={styles.suggestionWrap}>
+                  {pendingSourceSuggestions.map((source) => (
+                    <TouchableOpacity
+                      key={source}
+                      activeOpacity={0.88}
+                      style={styles.sourceSuggestion}
+                      onPress={() => addBlockedSource(source)}
+                    >
+                      <Icons.PlusCircleIcon
+                        size={verticalScale(14)}
+                        color={colors.primary}
+                        weight="fill"
+                      />
+                      <Typo
+                        size={12}
+                        fontWeight={"800"}
+                        color={colors.neutral200}
+                      >
+                        {source}
+                      </Typo>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {blockedSourceApps.length > 0 ? (
+              <View style={styles.blockedList}>
+                {blockedSourceApps.map((source) => (
+                  <View key={source} style={styles.blockedItem}>
+                    <View style={styles.blockedIcon}>
+                      <Icons.ProhibitIcon
+                        size={verticalScale(18)}
+                        color={colors.rose}
+                        weight="bold"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Typo fontWeight={"900"}>{source}</Typo>
+                      <Typo size={12} color={colors.neutral400}>
+                        Ignored before inbox review.
+                      </Typo>
+                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.88}
+                      style={styles.removeBlockBtn}
+                      onPress={() => removeBlockedSource(source)}
+                    >
+                      <Icons.XCircleIcon
+                        size={verticalScale(22)}
+                        color={colors.rose}
+                        weight="fill"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Icons.ShieldCheckIcon
+                  size={verticalScale(24)}
+                  color={colors.neutral500}
+                  weight="fill"
+                />
+                <Typo color={colors.neutral400} style={{ textAlign: "center" }}>
+                  Belum ada source yang diblokir.
+                </Typo>
+              </View>
+            )}
+          </ScrollView>
+        </SheetModal>
+
+        <SheetModal
           visible={walletPickerVisible}
-          title={
-            mappingTarget
-              ? `Map ${NOTIFICATION_SOURCE_RULES.find((item) => item.key === mappingTarget)?.label ?? "Source"}`
-              : "Map Source"
-          }
+          title="Map Wallet"
           onClose={() => {
             setWalletPickerVisible(false);
             setMappingTarget(null);
@@ -437,15 +880,16 @@ const NotificationImport = () => {
               <View style={{ flex: 1 }}>
                 <Typo fontWeight={"800"}>Auto match</Typo>
                 <Typo size={12} color={colors.neutral400}>
-                  Let parser choose wallet from the source and fallback rules.
+                  Use source hints and fallback wallet.
                 </Typo>
               </View>
             </TouchableOpacity>
 
             {wallets.map((wallet) => {
               const id = String(wallet.id ?? "");
-              const active =
-                mappingTarget ? sourceWalletMappings[mappingTarget] === id : false;
+              const active = mappingTarget
+                ? sourceWalletMappings[mappingTarget] === id
+                : false;
 
               return (
                 <TouchableOpacity
@@ -464,7 +908,7 @@ const NotificationImport = () => {
                       {wallet.name}
                     </Typo>
                     <Typo size={12} color={colors.neutral400}>
-                      {formatWalletMeta(wallet)}
+                      {wallet.hidden ? "Hidden" : "Visible wallet"}
                     </Typo>
                   </View>
                   {active ? (
@@ -527,6 +971,33 @@ const styles = StyleSheet.create({
     backgroundColor: colors.neutral900,
     gap: spacingY._10,
   },
+  menuCard: {
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._17,
+    backgroundColor: colors.neutral900,
+    overflow: "hidden",
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._12,
+    paddingVertical: spacingY._12,
+    paddingHorizontal: spacingX._12,
+  },
+  menuIcon: {
+    width: verticalScale(42),
+    height: verticalScale(42),
+    borderRadius: radius._12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+  },
+  blockMenuIcon: {
+    backgroundColor: "#211111",
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -541,6 +1012,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacingY._10,
     borderRadius: radius._12,
     backgroundColor: colors.primary,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacingX._12,
   },
   walletItem: {
     flexDirection: "row",
@@ -571,7 +1047,131 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: "#102015",
   },
-  mappingRow: {
+  sheetContent: {
+    gap: spacingY._12,
+    paddingTop: spacingY._5,
+  },
+  sourceSection: {
+    borderWidth: 1,
+    borderColor: colors.neutral800,
+    borderRadius: radius._15,
+    overflow: "hidden",
+    backgroundColor: colors.neutral900,
+  },
+  sourceSectionTitle: {
+    backgroundColor: colors.neutral800,
+    paddingHorizontal: spacingX._12,
+    paddingVertical: spacingY._7,
+  },
+  sourceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.neutral800,
+    paddingVertical: spacingY._10,
+    paddingHorizontal: spacingX._12,
+  },
+  sourceRowBlocked: {
+    backgroundColor: "#1F1111",
+  },
+  sourceRowMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+  },
+  logoWrap: {
+    width: verticalScale(40),
+    height: verticalScale(40),
+    borderRadius: radius._12,
+    overflow: "hidden",
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+  },
+  logoImage: {
+    flex: 1,
+  },
+  sourceText: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacingY._5,
+  },
+  sourceTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._7,
+  },
+  blockedPill: {
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
+    borderRadius: 999,
+    paddingHorizontal: spacingX._7,
+    paddingVertical: 2,
+    backgroundColor: "#450A0A",
+  },
+  sourceBlockBtn: {
+    width: verticalScale(38),
+    height: verticalScale(38),
+    borderRadius: radius._12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
+    backgroundColor: "#211111",
+  },
+  sourceUnblockBtn: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  blockInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._10,
+  },
+  blockInput: {
+    flex: 1,
+    minHeight: verticalScale(46),
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: radius._12,
+    paddingHorizontal: spacingX._12,
+    color: colors.white,
+    backgroundColor: "#111827",
+  },
+  addBlockBtn: {
+    minHeight: verticalScale(46),
+    width: verticalScale(46),
+    borderRadius: radius._12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+  },
+  suggestionBlock: {
+    gap: spacingY._7,
+  },
+  suggestionWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacingX._7,
+  },
+  sourceSuggestion: {
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: 999,
+    paddingHorizontal: spacingX._10,
+    paddingVertical: spacingY._7,
+    backgroundColor: "#111827",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._5,
+  },
+  blockedList: {
+    gap: spacingY._10,
+  },
+  blockedItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacingX._12,
@@ -580,18 +1180,26 @@ const styles = StyleSheet.create({
     borderRadius: radius._15,
     paddingVertical: spacingY._12,
     paddingHorizontal: spacingX._12,
+    backgroundColor: "#101010",
+  },
+  blockedIcon: {
+    width: verticalScale(36),
+    height: verticalScale(36),
+    borderRadius: radius._12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#211111",
+  },
+  removeBlockBtn: {
+    width: verticalScale(34),
+    height: verticalScale(34),
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyState: {
     paddingVertical: spacingY._12,
-  },
-  bulletList: {
-    gap: spacingY._7,
-  },
-  saveBtn: {
-    height: verticalScale(50),
-    borderRadius: radius._15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.primary,
+    gap: spacingY._7,
   },
 });

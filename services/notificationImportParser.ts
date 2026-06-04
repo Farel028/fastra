@@ -47,9 +47,16 @@ export const parseRawNotification = (
 };
 
 export const getSourceRule = (text: string): SourceRule | null => {
+  return getSourceRuleFromList(text, NOTIFICATION_SOURCE_RULES);
+};
+
+export const getSourceRuleFromList = (
+  text: string,
+  sourceRules: SourceRule[],
+): SourceRule | null => {
   const normalized = text.toLowerCase();
   return (
-    NOTIFICATION_SOURCE_RULES.find((rule) =>
+    sourceRules.find((rule) =>
       rule.aliases.some((keyword) => normalized.includes(keyword)),
     ) ?? null
   );
@@ -58,16 +65,17 @@ export const getSourceRule = (text: string): SourceRule | null => {
 export const getSourceKey = (
   payload: NativeNotificationPayload,
   text: string,
+  sourceRules = NOTIFICATION_SOURCE_RULES,
 ): SourceAppKey | null => {
   const fromApp = normalizeText(payload.app);
   if (fromApp) {
-    const byApp = NOTIFICATION_SOURCE_RULES.find((rule) =>
+    const byApp = sourceRules.find((rule) =>
       rule.aliases.some((alias) => fromApp.includes(alias)),
     );
     if (byApp) return byApp.key;
   }
 
-  const byText = getSourceRule(text);
+  const byText = getSourceRuleFromList(text, sourceRules);
   return byText?.key ?? null;
 };
 
@@ -244,10 +252,11 @@ export const buildDedupeKey = (
 
 export const resolveTransaction = (
   payload: NativeNotificationPayload,
+  sourceRules = NOTIFICATION_SOURCE_RULES,
 ): ResolvedNotificationTransaction => {
   const combinedText = extractCombinedText(payload);
-  const sourceRule = getSourceRule(combinedText);
-  const sourceKey = getSourceKey(payload, combinedText);
+  const sourceRule = getSourceRuleFromList(combinedText, sourceRules);
+  const sourceKey = getSourceKey(payload, combinedText, sourceRules);
   const direction = detectDirection(combinedText, sourceRule);
   const amount = extractAmount(combinedText);
 

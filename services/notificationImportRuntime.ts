@@ -1,16 +1,19 @@
 import {
   parseRawNotification,
+  extractCombinedText,
   resolveTransaction
 } from "@/services/notificationImportParser";
-import { SourceAppKey } from "@/services/notificationImportRules";
+import { NOTIFICATION_SOURCE_RULES, SourceAppKey } from "@/services/notificationImportRules";
 import { NOTIFICATION_IMPORT_DEBUG_ENABLED } from "@/services/notificationImportRuntimeState";
 import {
   appendNotificationImportDebugEvent,
+  appendPendingNotificationImport,
   fetchVisibleWallets,
   getActiveNotificationImportUid,
   hasSeenKey,
   loadNotificationImportConfig,
   markSeenKey,
+  removePendingNotificationImport,
 } from "@/services/notificationImportStorage";
 import { createOrUpdateTransaction } from "@/services/transactionService";
 import { devError, devLog, devWarn } from "@/utils/devLogger";
@@ -31,6 +34,23 @@ const normalizeWhitespace = (value?: unknown): string =>
 
 const normalizeText = (value?: unknown): string =>
   normalizeWhitespace(value).toLowerCase();
+
+const isBlockedSource = (
+  sourceValues: (string | undefined)[],
+  blockedSourceApps: string[],
+): boolean => {
+  const normalizedSources = sourceValues.map(normalizeText).filter(Boolean);
+  if (!normalizedSources.length) return false;
+
+  return blockedSourceApps.some((blocked) => {
+    const normalizedBlocked = normalizeText(blocked);
+    return Boolean(normalizedBlocked) && normalizedSources.some((normalizedSource) =>
+      normalizedSource === normalizedBlocked ||
+      normalizedSource.includes(normalizedBlocked) ||
+      normalizedBlocked.includes(normalizedSource),
+    );
+  });
+};
 
 const logImportDebug = (
   stage: string,
@@ -196,7 +216,33 @@ export const processNativeNotificationImport = async (
     return { success: false, msg: "Invalid notification payload" };
   }
 
-  const resolved = resolveTransaction(payload);
+  const resolved = resolveTransaction(payload, NOTIFICATION_SOURCE_RULES);
+  const combinedText = extractCombinedText(payload);
+  if (
+    isBlockedSource(
+      [
+        payload.app,
+        resolved.sourceApp,
+        resolved.sourceLabel,
+        resolved.sourceKey,
+        combinedText,
+      ],
+      config.blockedSourceApps ?? [],
+    )
+  ) {
+    logImportDebug("blocked", "Notification source is blocked", {
+      app: payload.app,
+      blockedSourceApps: config.blockedSourceApps,
+    });
+    await appendNotificationImportDebugEvent(uid, {
+      level: "info",
+      stage: "blocked",
+      message: "Notification source is blocked",
+      data: { app: payload.app },
+    });
+    return { success: false, msg: "Notification source blocked" };
+  }
+
   if (!resolved.shouldImport || !resolved.type || !resolved.amount) {
     logImportDebug(
       "resolve",
@@ -240,11 +286,21 @@ export const processNativeNotificationImport = async (
     return { success: true, msg: "Duplicate notification ignored" };
   }
 
+  const resolvedSourceRule = NOTIFICATION_SOURCE_RULES.find(
+    (rule) => rule.key === resolved.sourceKey,
+  );
+  const sourceHint = [
+    resolved.sourceApp,
+    ...(resolvedSourceRule?.walletHints ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   const walletId = await resolveWalletId(
     uid,
     resolved.sourceKey ?? null,
     resolved.sourceLabel ?? resolved.sourceApp ?? "",
-    resolved.sourceApp ?? "",
+    sourceHint,
     config.fallbackWalletId,
   );
 
@@ -292,28 +348,74 @@ export const processNativeNotificationImport = async (
     },
   });
 
-  const result = await createOrUpdateTransaction({
-    uid,
+  await appendPendingNotificationImport(uid, {
+    id: dedupeKey,
+    createdAt: new Date().toISOString(),
+    dedupeKey,
+    sourceApp: resolved.sourceApp ?? payload.app ?? "",
+    sourceLabel: resolved.sourceLabel ?? resolved.sourceApp ?? "Notification",
+    sourceKey: resolved.sourceKey,
+    title: payload.title,
+    text: payload.text,
+    bigText: payload.bigText,
     type: resolved.type,
     amount: resolved.amount,
     category: resolved.category,
-    date: resolved.notificationTime ?? new Date(),
     description: resolved.description,
     walletId,
+    notificationTime: (resolved.notificationTime ?? new Date()).toISOString(),
+  });
+
+  logImportDebug("pending", "Transaction queued for review", {
+    walletId,
+    type: resolved.type,
+    amount: resolved.amount,
+    dedupeKey,
+  });
+  await appendNotificationImportDebugEvent(uid, {
+    level: "info",
+    stage: "pending",
+    message: "Transaction queued for review",
+    data: {
+      walletId,
+      type: resolved.type,
+      amount: resolved.amount,
+      dedupeKey,
+    },
+  });
+  return { success: true, msg: "Notification queued for review" };
+};
+
+export const savePendingNotificationImport = async (
+  uid: string,
+  pendingId: string,
+): Promise<ImportResult> => {
+  const pending = await removePendingNotificationImport(uid, pendingId);
+  if (!pending) return { success: false, msg: "Pending notification not found" };
+
+  const result = await createOrUpdateTransaction({
+    uid,
+    type: pending.type,
+    amount: pending.amount,
+    category: pending.category,
+    date: new Date(pending.notificationTime),
+    description: pending.description,
+    walletId: pending.walletId,
     autoImported: true,
-    autoImportSource: resolved.sourceApp,
-    autoImportSourceLabel: resolved.sourceLabel,
-    autoImportDedupeKey: dedupeKey,
+    autoImportSource: pending.sourceApp,
+    autoImportSourceLabel: pending.sourceLabel,
+    autoImportDedupeKey: pending.dedupeKey,
   } as any);
 
   if (!result.success) {
+    await appendPendingNotificationImport(uid, pending);
     logImportDebug(
       "save",
       result.msg ?? "Failed to save transaction",
       {
-        walletId,
-        type: resolved.type,
-        amount: resolved.amount,
+        walletId: pending.walletId,
+        type: pending.type,
+        amount: pending.amount,
       },
       "error",
     );
@@ -322,33 +424,54 @@ export const processNativeNotificationImport = async (
       stage: "save",
       message: result.msg ?? "Failed to save transaction",
       data: {
-        walletId,
-        type: resolved.type,
-        amount: resolved.amount,
+        walletId: pending.walletId,
+        type: pending.type,
+        amount: pending.amount,
       },
     });
     return result;
   }
 
-  await markSeenKey(uid, dedupeKey);
+  await markSeenKey(uid, pending.dedupeKey);
   logImportDebug("saved", "Transaction saved successfully", {
-    walletId,
-    type: resolved.type,
-    amount: resolved.amount,
-    dedupeKey,
+    walletId: pending.walletId,
+    type: pending.type,
+    amount: pending.amount,
+    dedupeKey: pending.dedupeKey,
   });
   await appendNotificationImportDebugEvent(uid, {
     level: "info",
     stage: "saved",
     message: "Transaction saved successfully",
     data: {
-      walletId,
-      type: resolved.type,
-      amount: resolved.amount,
-      dedupeKey,
+      walletId: pending.walletId,
+      type: pending.type,
+      amount: pending.amount,
+      dedupeKey: pending.dedupeKey,
     },
   });
   return { success: true, msg: "Auto imported transaction" };
+};
+
+export const discardPendingNotificationImport = async (
+  uid: string,
+  pendingId: string,
+): Promise<ImportResult> => {
+  const pending = await removePendingNotificationImport(uid, pendingId);
+  if (!pending) return { success: false, msg: "Pending notification not found" };
+
+  await markSeenKey(uid, pending.dedupeKey);
+  await appendNotificationImportDebugEvent(uid, {
+    level: "info",
+    stage: "discarded",
+    message: "Pending notification discarded",
+    data: {
+      sourceApp: pending.sourceApp,
+      amount: pending.amount,
+      dedupeKey: pending.dedupeKey,
+    },
+  });
+  return { success: true, msg: "Pending notification discarded" };
 };
 
 export const registerAndroidNotificationHeadlessTask = (

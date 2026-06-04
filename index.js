@@ -1,3 +1,5 @@
+require("react-native-gesture-handler");
+
 const { AppRegistry } = require("react-native");
 const {
   registerAndroidNotificationHeadlessTask,
@@ -6,4 +8,3 @@ const {
 registerAndroidNotificationHeadlessTask(AppRegistry);
 
 require("expo-router/entry");
-

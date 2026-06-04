@@ -26,7 +26,7 @@ export type NotificationImportStatus =
   | "unknown"
   | "unavailable";
 
-export type SourceAppKey =
+export type BuiltInSourceAppKey =
   | "dana"
   | "ovo"
   | "gopay"
@@ -35,12 +35,37 @@ export type SourceAppKey =
   | "bri"
   | "mandiri"
   | "bni"
-  | "cimb";
+  | "btn"
+  | "bsi"
+  | "cimb"
+  | "danamon"
+  | "permata"
+  | "maybank"
+  | "ocbc"
+  | "uob"
+  | "hsbc"
+  | "dbs"
+  | "panin"
+  | "mega"
+  | "muamalat"
+  | "jago"
+  | "jenius"
+  | "seabank"
+  | "neo"
+  | "allobank"
+  | "blu"
+  | "linebank"
+  | "linkaja"
+  | "astrapay"
+  | "doku";
+
+export type SourceAppKey = BuiltInSourceAppKey;
 
 export type NotificationImportConfig = {
   enabled: boolean;
   fallbackWalletId: string | null;
   sourceWalletMappings: Partial<Record<SourceAppKey, string>>;
+  blockedSourceApps: string[];
 };
 
 export type NotificationImportDebugLevel = "info" | "warn" | "error";
@@ -65,6 +90,63 @@ export type SourceRule = {
   descriptionFields: (keyof NativeNotificationPayload)[];
 };
 
+const bankIncomeKeywords = ["kredit", "diterima", "masuk", "credit", "refund"];
+const bankExpenseKeywords = [
+  "debit",
+  "transfer",
+  "pembayaran",
+  "bayar",
+  "keluar",
+];
+const walletIncomeKeywords = [
+  "top up",
+  "cashback",
+  "refund",
+  "masuk",
+  "diterima",
+];
+const walletExpenseKeywords = [
+  "transfer",
+  "bayar",
+  "pembayaran",
+  "keluar",
+  "purchase",
+];
+const defaultDescriptionFields: (keyof NativeNotificationPayload)[] = [
+  "titleBig",
+  "title",
+  "text",
+  "bigText",
+  "summaryText",
+  "subText",
+];
+
+const createSourceRule = (
+  key: SourceAppKey,
+  label: string,
+  aliases: string[],
+  kind: "bank" | "ewallet",
+): SourceRule => ({
+  key,
+  label,
+  aliases,
+  walletHints: aliases,
+  incomeKeywords: kind === "bank" ? bankIncomeKeywords : walletIncomeKeywords,
+  expenseKeywords: kind === "bank" ? bankExpenseKeywords : walletExpenseKeywords,
+  categoryIncomeKeywords: [
+    { keyword: "gaji", value: "salary" },
+    { keyword: "refund", value: "refund" },
+    { keyword: "cashback", value: "bonus" },
+  ],
+  categoryExpenseKeywords: [
+    { keyword: "debit", value: "others" },
+    { keyword: "bayar", value: "others" },
+    { keyword: "transfer", value: "others" },
+    { keyword: "tagihan", value: "utilities" },
+  ],
+  descriptionFields: defaultDescriptionFields,
+});
+
 export type ResolvedNotificationTransaction = {
   shouldImport: boolean;
   reason?: string;
@@ -77,6 +159,24 @@ export type ResolvedNotificationTransaction = {
   sourceKey?: SourceAppKey;
   notificationTime?: Date;
   dedupeKey?: string;
+};
+
+export type PendingNotificationImport = {
+  id: string;
+  createdAt: string;
+  dedupeKey: string;
+  sourceApp: string;
+  sourceLabel: string;
+  sourceKey?: SourceAppKey;
+  title?: string;
+  text?: string;
+  bigText?: string;
+  type: "income" | "expense";
+  amount: number;
+  category?: string;
+  description?: string;
+  walletId: string;
+  notificationTime: string;
 };
 
 export const NOTIFICATION_SOURCE_RULES: SourceRule[] = [
@@ -264,6 +364,28 @@ export const NOTIFICATION_SOURCE_RULES: SourceRule[] = [
     ],
     descriptionFields: ["titleBig", "title", "text", "bigText", "subText"],
   },
+  createSourceRule("btn", "BTN", ["btn"], "bank"),
+  createSourceRule("bsi", "BSI", ["bsi", "bank syariah indonesia"], "bank"),
+  createSourceRule("danamon", "Danamon", ["danamon"], "bank"),
+  createSourceRule("permata", "PermataBank", ["permata", "permatabank"], "bank"),
+  createSourceRule("maybank", "Maybank", ["maybank"], "bank"),
+  createSourceRule("ocbc", "OCBC", ["ocbc"], "bank"),
+  createSourceRule("uob", "UOB", ["uob"], "bank"),
+  createSourceRule("hsbc", "HSBC", ["hsbc"], "bank"),
+  createSourceRule("dbs", "DBS", ["dbs"], "bank"),
+  createSourceRule("panin", "Panin", ["panin"], "bank"),
+  createSourceRule("mega", "Bank Mega", ["mega", "bank mega"], "bank"),
+  createSourceRule("muamalat", "Muamalat", ["muamalat"], "bank"),
+  createSourceRule("jago", "Bank Jago", ["jago", "bank jago"], "bank"),
+  createSourceRule("jenius", "Jenius", ["jenius"], "bank"),
+  createSourceRule("seabank", "SeaBank", ["seabank", "sea bank"], "bank"),
+  createSourceRule("neo", "Bank Neo", ["neo", "neobank", "bank neo"], "bank"),
+  createSourceRule("allobank", "Allo Bank", ["allobank", "allo bank"], "bank"),
+  createSourceRule("blu", "blu", ["blu", "bca digital"], "bank"),
+  createSourceRule("linebank", "LINE Bank", ["linebank", "line bank"], "bank"),
+  createSourceRule("linkaja", "LinkAja", ["linkaja", "link aja"], "ewallet"),
+  createSourceRule("astrapay", "AstraPay", ["astrapay", "astra pay"], "ewallet"),
+  createSourceRule("doku", "DOKU", ["doku"], "ewallet"),
 ];
 
 export const POSITIVE_KEYWORDS = [

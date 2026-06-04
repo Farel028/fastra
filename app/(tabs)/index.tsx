@@ -6,7 +6,10 @@ import Typo from "@/components/Typo";
 import { colors, spacingX, spacingY } from "@/constants/theme";
 import { useAuth } from "@/contexts/authContext";
 import useFetchData from "@/hooks/useFetchData";
-import { loadNotificationImportManualAccess } from "@/services/notificationImportStorage";
+import {
+  loadNotificationImportManualAccess,
+  loadPendingNotificationImportSummary,
+} from "@/services/notificationImportStorage";
 import { TransactionType } from "@/types";
 import { verticalScale } from "@/utils/styling";
 import { useFocusEffect } from "@react-navigation/native";
@@ -24,12 +27,6 @@ import {
 
 const homeFeatures = [
   {
-    key: "notifications",
-    label: "Notifications",
-    route: "/notifications",
-    icon: Icons.BellIcon,
-  },
-  {
     key: "debts",
     label: "Debts",
     route: "/debts",
@@ -42,6 +39,7 @@ const Home = () => {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [manualAccessConfirmed, setManualAccessConfirmed] = useState(false);
+  const [pendingImportCount, setPendingImportCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,12 +47,21 @@ const Home = () => {
 
       const loadManualAccess = async () => {
         if (!user?.uid) {
-          if (mounted) setManualAccessConfirmed(false);
+          if (mounted) {
+            setManualAccessConfirmed(false);
+            setPendingImportCount(0);
+          }
           return;
         }
 
-        const confirmed = await loadNotificationImportManualAccess(user.uid);
-        if (mounted) setManualAccessConfirmed(confirmed);
+        const [confirmed, pendingSummary] = await Promise.all([
+          loadNotificationImportManualAccess(user.uid),
+          loadPendingNotificationImportSummary(user.uid, 12),
+        ]);
+        if (mounted) {
+          setManualAccessConfirmed(confirmed);
+          setPendingImportCount(pendingSummary.totalCount);
+        }
       };
 
       void loadManualAccess();
@@ -98,16 +105,40 @@ const Home = () => {
               </Typo>
             </Typo>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push("/(modals)/searchModal")}
-            style={styles.searchIcon}
-          >
-            <Icons.MagnifyingGlassIcon
-              size={verticalScale(22)}
-              color={colors.neutral200}
-              weight="bold"
-            />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push("/(modals)/searchModal")}
+              style={styles.headerAction}
+            >
+              <Icons.MagnifyingGlassIcon
+                size={verticalScale(21)}
+                color={colors.neutral100}
+                weight="bold"
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push("/notifications")}
+              style={styles.headerAction}
+            >
+              <Icons.BellIcon
+                size={verticalScale(21)}
+                color={colors.neutral100}
+                weight="bold"
+              />
+              {pendingImportCount > 0 ? (
+                <View style={styles.notificationBadge}>
+                  <Typo size={9} fontWeight={"900"} color={colors.black}>
+                    {pendingImportCount > 99 ? "99+" : pendingImportCount}
+                  </Typo>
+                </View>
+              ) : !manualAccessConfirmed ? (
+                <View style={styles.notificationDot} />
+              ) : null}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -130,7 +161,6 @@ const Home = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {homeFeatures.map((feature) => {
               const Icon = feature.icon;
-              const showBadge = feature.key === "notifications" && !manualAccessConfirmed;
               return (
                 <View key={feature.key} style={styles.featureItem}>
                   <Button
@@ -143,13 +173,6 @@ const Home = () => {
                         color={colors.black}
                         weight="bold"
                       />
-                      {showBadge && (
-                        <View style={styles.featureBadge}>
-                          <Typo size={10} fontWeight={"900"} color={colors.white}>
-                            1
-                          </Typo>
-                        </View>
-                      )}
                     </View>
                   </Button>
 
@@ -204,10 +227,48 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacingY._10,
   },
-  searchIcon: {
-    backgroundColor: colors.neutral700,
-    padding: spacingX._10,
-    borderRadius: 50,
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacingX._7,
+    backgroundColor: colors.neutral800,
+    borderWidth: 1,
+    borderColor: colors.neutral700,
+    borderRadius: 999,
+    paddingHorizontal: spacingX._10,
+    height: verticalScale(44),
+  },
+  headerAction: {
+    width: verticalScale(28),
+    height: verticalScale(34),
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  notificationDot: {
+    position: "absolute",
+    top: verticalScale(2),
+    right: verticalScale(1),
+    width: verticalScale(9),
+    height: verticalScale(9),
+    borderRadius: verticalScale(9),
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.neutral800,
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: verticalScale(-3),
+    right: verticalScale(-5),
+    minWidth: verticalScale(17),
+    height: verticalScale(17),
+    borderRadius: verticalScale(17),
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.neutral800,
   },
   floatingButton: {
     height: verticalScale(50),
@@ -234,18 +295,6 @@ const styles = StyleSheet.create({
   },
   featureIconWrap: {
     position: "relative",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  featureBadge: {
-    position: "absolute",
-    top: -verticalScale(8),
-    right: -verticalScale(8),
-    minWidth: verticalScale(18),
-    height: verticalScale(18),
-    borderRadius: verticalScale(18),
-    paddingHorizontal: 4,
-    backgroundColor: "#EF4444",
     alignItems: "center",
     justifyContent: "center",
   },
