@@ -28,6 +28,7 @@ const ProfileModal = () => {
   const [userData, setUserData] = useState<UserDataType>({
     name: "",
     image: null,
+    username: "",
   });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -36,6 +37,7 @@ const ProfileModal = () => {
     setUserData({
       name: user?.name || "",
       image: user?.image || null,
+      username: user?.username || "",
     });
   }, [user]);
 
@@ -52,14 +54,14 @@ const ProfileModal = () => {
   };
 
   const onSubmit = async () => {
-    let { name, image } = userData;
+    const { name, image } = userData;
     if (!name.trim()) {
       Alert.alert("User", "Please fill all the fields");
       return;
     }
 
     setLoading(true);
-    const res = await updateUser(user?.uid as string, userData);
+    const res = await updateUser(user?.uid as string, { name, image });
     setLoading(false);
 
     if (res.success) {
@@ -96,6 +98,18 @@ const ProfileModal = () => {
                 color={colors.neutral800}
               />
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Typo color={colors.neutral200}>Username</Typo>
+            <Input
+              placeholder="Username"
+              value={userData.username ?? ""}
+              editable={false}
+              selectTextOnFocus={false}
+              containerStyle={styles.readonlyInput}
+              inputStyle={styles.readonlyInputText}
+            />
           </View>
 
           <View style={styles.inputContainer}>
@@ -177,5 +191,12 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     gap: spacingY._10,
+  },
+  readonlyInput: {
+    borderColor: colors.neutral700,
+    backgroundColor: colors.neutral800,
+  },
+  readonlyInputText: {
+    color: colors.neutral400,
   },
 });

@@ -1,18 +1,13 @@
-import { Href } from "expo-router";
-import { Firestore, Timestamp } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
 import { Icon } from "phosphor-react-native";
 import React, { ReactNode } from "react";
 import {
-  ActivityIndicator,
-  ActivityIndicatorProps,
-  ImageStyle,
-  PressableProps,
   TextInput,
   TextInputProps,
   TextProps,
   TextStyle,
   TouchableOpacityProps,
-  ViewStyle,
+  ViewStyle
 } from "react-native";
 
 export type ScreenWrapperProps = {
@@ -149,6 +144,7 @@ export type UserType = {
 export type UserDataType = {
   name: string;
   image?: any;
+  username?: string | null;
 };
 
 export type AuthActionCode =
@@ -175,11 +171,11 @@ export type AuthContextType = {
   register: (
     username: string,
     email: string,
-    password: string
+    password: string,
   ) => Promise<AuthActionResponse>;
   resendVerificationEmail: (
     identifier: string,
-    password: string
+    password: string,
   ) => Promise<AuthActionResponse>;
   forgotPassword: (email: string) => Promise<AuthActionResponse>;
   updateUserData: (userId: string) => Promise<void>;

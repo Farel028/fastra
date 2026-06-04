@@ -111,12 +111,13 @@ export const SYSTEM_WALLET_IDS = (uid: string) => ({
 });
 
 export const isSystemWalletId = (id?: string) =>
-  !!id &&
-  (id.startsWith("__payable__") || id.startsWith("__receivable__"));
+  !!id && (id.startsWith("__payable__") || id.startsWith("__receivable__"));
 
 export const isSystemWallet = (wallet: WalletType) => {
   const id = String((wallet as any)?.id ?? "");
-  const name = String(wallet?.name ?? "").trim().toLowerCase();
+  const name = String(wallet?.name ?? "")
+    .trim()
+    .toLowerCase();
 
   return (
     wallet?.hidden === true ||
@@ -126,7 +127,6 @@ export const isSystemWallet = (wallet: WalletType) => {
     name === "receivable"
   );
 };
-
 
 export const ensureSystemWallets = async (uid: string) => {
   if (!uid) throw new Error("uid wajib");
@@ -168,8 +168,5 @@ export const ensureSystemWallets = async (uid: string) => {
   return ids;
 };
 
-/**
- * ✅ helper buat filter wallet yang tampil di UI (My Wallet / picker normal)
- */
 export const filterVisibleWallets = (wallets: WalletType[]) =>
   wallets.filter((w) => !isSystemWallet(w));

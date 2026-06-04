@@ -2,6 +2,7 @@ import { AuthProvider } from "@/contexts/authContext";
 import { CategoryProvider } from "@/contexts/categoryContext";
 import { Stack } from "expo-router";
 import React from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const StackLayout = () => {
   return (
@@ -68,10 +69,12 @@ const StackLayout = () => {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <CategoryProvider>
-        <StackLayout />
-      </CategoryProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <CategoryProvider>
+          <StackLayout />
+        </CategoryProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
