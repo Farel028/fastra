@@ -317,27 +317,31 @@ const NotificationImport = () => {
       }
 
       setLoadingConfig(true);
-      const [config, status, pending] = await Promise.all([
-        loadNotificationImportConfig(user.uid),
-        getNotificationListenerStatus(),
-        loadPendingNotificationImports(user.uid, 30),
+      try {
+        const config = await loadNotificationImportConfig(user.uid);
+
+        if (!mounted) return;
+
+        setEnabled(config.enabled);
+        setFallbackWalletId(config.fallbackWalletId ?? "");
+        setSourceWalletMappings(config.sourceWalletMappings ?? {});
+        setBlockedSourceApps(normalizeBlockedSources(config.blockedSourceApps ?? []));
+      } catch (error: any) {
+        if (mounted) {
+          Alert.alert(
+            "Notification Import",
+            error?.message || "Failed to load notification import config.",
+          );
+        }
+      }
+
+      const [status, pending] = await Promise.all([
+        getNotificationListenerStatus().catch(() => "unknown" as NotificationImportStatus),
+        loadPendingNotificationImports(user.uid, 30).catch(() => []),
       ]);
 
       if (!mounted) return;
 
-      await saveNotificationImportConfig(user.uid, {
-        enabled: config.enabled,
-        fallbackWalletId: config.fallbackWalletId,
-        sourceWalletMappings: config.sourceWalletMappings ?? {},
-        blockedSourceApps: normalizeBlockedSources(config.blockedSourceApps ?? []),
-      });
-
-      if (!mounted) return;
-
-      setEnabled(config.enabled);
-      setFallbackWalletId(config.fallbackWalletId ?? "");
-      setSourceWalletMappings(config.sourceWalletMappings ?? {});
-      setBlockedSourceApps(normalizeBlockedSources(config.blockedSourceApps ?? []));
       setPendingImports(pending);
       setPermissionStatus(status);
       setLoadingConfig(false);
