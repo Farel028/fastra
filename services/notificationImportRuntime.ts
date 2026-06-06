@@ -79,12 +79,21 @@ export const getNotificationListenerStatus = async (): Promise<
 > => {
   if (Platform.OS !== "android") return "unavailable";
 
-  const status = await getPermissionStatus();
-  logImportDebug("permission", "Current notification listener status", {
-    status,
-  });
-  if (status === "authorized" || status === "denied" || status === "unknown") {
-    return status;
+  try {
+    const status = await getPermissionStatus();
+    logImportDebug("permission", "Current notification listener status", {
+      status,
+    });
+    if (status === "authorized" || status === "denied" || status === "unknown") {
+      return status;
+    }
+  } catch (error) {
+    logImportDebug(
+      "permission",
+      "Failed to read notification listener status",
+      error,
+      "warn",
+    );
   }
 
   return "unknown";
