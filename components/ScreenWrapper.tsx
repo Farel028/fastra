@@ -1,19 +1,16 @@
 import { colors } from "@/constants/theme";
 import { ScreenWrapperProps } from "@/types";
 import React from "react";
-import {
-    Dimensions,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    View,
-} from "react-native";
+import { StatusBar, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { height } = Dimensions.get("window");
-
-const ScreenWrapper = ({ style, children }: ScreenWrapperProps) => {
-  const paddingTop =
-    Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+const ScreenWrapper = ({
+  style,
+  children,
+  safeTop = true,
+}: ScreenWrapperProps) => {
+  const insets = useSafeAreaInsets();
+  const paddingTop = safeTop ? insets.top : 0;
   return (
     <View
       style={[
@@ -28,5 +25,3 @@ const ScreenWrapper = ({ style, children }: ScreenWrapperProps) => {
 };
 
 export default ScreenWrapper;
-
-const styles = StyleSheet.create({});

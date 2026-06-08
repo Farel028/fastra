@@ -13,6 +13,7 @@ import {
 export type ScreenWrapperProps = {
   style?: ViewStyle;
   children: React.ReactNode;
+  safeTop?: boolean;
 };
 export type ModalWrapperProps = {
   style?: ViewStyle;

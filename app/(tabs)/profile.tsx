@@ -33,9 +33,10 @@ const Profile = () => {
       bgColor: "#059669",
     },
     {
-      title: "Privacy Policy",
-      icon: <Icons.LockIcon size={26} color={colors.white} weight="fill" />,
-      bgColor: colors.neutral600,
+      title: "About Fastra",
+      icon: <Icons.InfoIcon size={26} color={colors.white} weight="fill" />,
+      routeName: "/about",
+      bgColor: "#A855F7",
     },
     {
       title: "Logout",

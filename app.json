@@ -2,7 +2,7 @@
   "expo": {
     "name": "Fastra",
     "slug": "entrack",
-    "version": "1.2.0",
+    "version": "2.0.4",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "fastra",
@@ -33,10 +33,7 @@
               "pathPrefix": "/__/auth/action"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
